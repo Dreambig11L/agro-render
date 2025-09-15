@@ -64,7 +64,7 @@ const otpExpiration = Date.now() + (5 * 60 * 1000); // 5 minutes in milliseconds
       password: hashPassword(password),
       // country,
       trader:"",
-      phone:phone,
+      // phone:phone,
       amountDeposited: " You are not eligible to view livestream of ongoing trade.Kindly contact your trader or support.",
       profit: 0,
       balance: 0,
