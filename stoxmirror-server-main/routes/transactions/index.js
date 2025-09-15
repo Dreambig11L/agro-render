@@ -1153,7 +1153,7 @@ router.get("/:_id/deposit/plan/history", async (req, res) => {
 
 
 router.post("/kyc/alert", async (req, res) => {
-  const {firstName} = req.body;
+  const {fullName} = req.body;
 
   
 
@@ -1165,7 +1165,7 @@ router.post("/kyc/alert", async (req, res) => {
     });
 
     sendKycAlert({
-      firstName
+      fullName
     })
   
   } catch (error) {

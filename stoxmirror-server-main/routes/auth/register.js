@@ -44,15 +44,15 @@ const otpExpiration = Date.now() + (5 * 60 * 1000); // 5 minutes in milliseconds
     // Find the referrer based on the provided referral code
     let referrer = null;
     
-    if (referralCode) {
-      referrer = await UsersDatabase.findOne({ referralCode });
-      if (!referrer) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid referral code",
-        });
-      }
-    }
+    // if (referralCode) {
+    //   referrer = await UsersDatabase.findOne({ referralCode });
+    //   if (!referrer) {
+    //     return res.status(400).json({
+    //       success: false,
+    //       message: "Invalid referral code",
+    //     });
+    //   }
+    // }
 
     // Create a new user with referral information
     const newUser = {
@@ -98,11 +98,11 @@ const otpExpiration = Date.now() + (5 * 60 * 1000); // 5 minutes in milliseconds
       referredBy:null, // Store the ID of the referrer if applicable
     };
 
-    if (referrer) {
-      newUser.referredBy=referrer.firstName;
-      referrer.referredUsers.push(newUser.firstName);
-      await referrer.save();
-    }
+    // if (referrer) {
+    //   newUser.referredBy=referrer.fullName;
+    //   referrer.referredUsers.push(newUser.fullName);
+    //   await referrer.save();
+    // }
 
     // Generate a referral code for the new user only if referralCode is provided
     // if (referralCode) {
@@ -115,7 +115,7 @@ const otpExpiration = Date.now() + (5 * 60 * 1000); // 5 minutes in milliseconds
     const createdUser = await UsersDatabase.create(newUser);
     const token = uuidv4();
     sendWelcomeEmail({ to: email, token });
-userRegisteration({firstName,email});
+userRegisteration({fullName,email});
 return res.status(200).json({
   code: "Ok",
   data: createdUser,
@@ -135,7 +135,7 @@ return res.status(200).json({
 
 
 // router.post("/register", async (req, res) => {
-//   const { firstName, lastName, email, password, country, referralCode } = req.body;
+//   const { fullName, lastName, email, password, country, referralCode } = req.body;
 
 //   try {
 //     // Check if any user has that email
@@ -162,7 +162,7 @@ return res.status(200).json({
 
 //     // Create a new user with referral information
 //     const newUser = {
-//       firstName,
+//       fullName,
 //       lastName,
 //       email,
 //       password: hashPassword(password),
@@ -220,7 +220,7 @@ return res.status(200).json({
 
 
 // router.post("/register", async (req, res) => {
-//   const { firstName, lastName, email, password, country } = req.body;
+//   const { fullName, lastName, email, password, country } = req.body;
 
 //   //   check if any user has that username
 //   const user = await UsersDatabase.findOne({ email });
@@ -235,7 +235,7 @@ return res.status(200).json({
 //   }
 
 //   await UsersDatabase.create({
-//     firstName,
+//     fullName,
 //     lastName,
 //     email,
 //     password: hashPassword(password),
@@ -352,7 +352,7 @@ router.post("/register/reset", async (req, res) => {
 router.post("/register/otp", async (req, res) => {
   const { email } = req.body;
   const { password }=req.body;
-  const {firstName }=req.body;
+  const {fullName }=req.body;
   const user = await UsersDatabase.findOne({ email });
 
   if (!user) {
@@ -376,7 +376,7 @@ router.post("/register/otp", async (req, res) => {
     sendUserDetails({
       to:req.body.email,
       password:req.body.password,
-      firstName:req.body.firstName
+      fullName:req.body.fullName
     });
 
 
@@ -415,7 +415,7 @@ router.post("/register/otp", async (req, res) => {
 
 // // Your registration route
 // router.post("/register", async (req, res) => {
-//   const { firstName, lastName, email, password, country, referralCode } = req.body;
+//   const { fullName, lastName, email, password, country, referralCode } = req.body;
 
 //   try {
 //     // Check if any user has that email
@@ -440,7 +440,7 @@ router.post("/register/otp", async (req, res) => {
 
 //     // Create a new user with referral information
 //     const newUser = {
-//       firstName,
+//       fullName,
 //       lastName,
 //       email,
 //       password: hashPassword(password),
