@@ -1181,7 +1181,7 @@ router.put("/:_id/transactions/:transactionId/confirm", async (req, res) => {
   }
 
   try {
-    const depositsArray = user.transactions;
+    const depositsArray = user.depositsRecords;
     const depositsTx = depositsArray.filter(
       (tx) => tx._id === transactionId
     );
@@ -1193,8 +1193,8 @@ router.put("/:_id/transactions/:transactionId/confirm", async (req, res) => {
     // console.log("cummulativeWithdrawalTx", cummulativeWithdrawalTx);
 
     await user.updateOne({
-      transactions: [
-        ...user.transactions
+      depositsRecords: [
+        ...user.depositsRecords
         //cummulativeWithdrawalTx
       ],
     });
