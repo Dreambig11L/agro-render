@@ -36,6 +36,54 @@ const cron = require('node-cron');
 const { v4: uuidv4 } = require("uuid");
 const app=express()
 
+ // 🔹 Start cron job AFTER DB connection
+  cron.schedule("0 0 * * *", async () => {
+    console.log("⏰ Running daily profit job...");
+
+    const runningUsers = await UsersDatabase.find({ "transactions.status": "RUNNING" });
+
+    for (const user of runningUsers) {
+      for (const trade of user.transactions) {
+        if (trade.status !== "RUNNING") continue;
+
+        const DAILY_PERCENTAGE = trade.roi;
+        const BASE_AMOUNT = Number(trade.amount) || 0;
+        const PROFIT_PER_DAY = BASE_AMOUNT * DAILY_PERCENTAGE;
+
+        await UsersDatabase.updateOne(
+          { "transactions._id": trade._id },
+          {
+            $inc: {
+              profit: PROFIT_PER_DAY,
+              "transactions.$.interest": PROFIT_PER_DAY,
+            },
+          }
+        );
+
+        console.log(`💰 Added ${PROFIT_PER_DAY} profit to user ${user._id} (trade ${trade._id})`);
+
+        // Close trade after 90 days
+        const start = new Date(trade.startTime);
+        const now = new Date();
+        const diffDays = Math.floor((now - start) / (1000 * 60 * 60 * 24));
+
+        if (diffDays >= 90) {
+          await UsersDatabase.updateOne(
+            { "transactions._id": trade._id },
+            {
+              $set: {
+                "transactions.$.status": "COMPLETED",
+                "transactions.$.exitPrice": BASE_AMOUNT + (PROFIT_PER_DAY * 90),
+                "transactions.$.result": "WON",
+              },
+            }
+          );
+
+          console.log(`✅ Trade ${trade._id} completed for user ${user._id}`);
+        }
+      }
+    }
+  });
 
 
 router.post("/:_id/deposit", async (req, res) => {
@@ -805,75 +853,17 @@ router.put("/trades/:tradeId/command", async (req, res) => {
       return res.status(404).json({ error: "Trade not found in user" });
     }
 
-    // Update the trade with new command
+    // Update only the trade command + status + startTime
     await UsersDatabase.updateOne(
       { "transactions._id": tradeId },
       {
         $set: {
           "transactions.$.command": command,
           "transactions.$.status": command === "true" ? "RUNNING" : "DECLINED",
-          "transactions.$.startTime":
-            command === "true" ? new Date() : trade.startTime,
+          "transactions.$.startTime": command === "true" ? new Date() : trade.startTime,
         },
       }
     );
-
-    // If activated, run for 90 days
-    if (command === "true") {
-      const DAILY_PERCENTAGE = trade.roi; // e.g. 0.02 for 2%
-      const BASE_AMOUNT = Number(trade.amount) || 0;
-      const PROFIT_PER_DAY = BASE_AMOUNT * DAILY_PERCENTAGE;
-      const TOTAL_DAYS = 90;
-
-      for (let day = 1; day <= TOTAL_DAYS; day++) {
-        setTimeout(async () => {
-          try {
-            const updatedUser = await UsersDatabase.findOne({
-              "transactions._id": tradeId,
-            });
-            const runningTrade = updatedUser.transactions.find(
-              (t) => t._id.toString() === tradeId
-            );
-
-            if (!runningTrade || runningTrade.status !== "RUNNING") return;
-
-            // ✅ Add daily profit to both user.profit and trade.interest
-            await UsersDatabase.updateOne(
-              { "transactions._id": tradeId },
-              {
-                $inc: {
-                  profit: PROFIT_PER_DAY,                   // global user profit
-                  "transactions.$.interest": PROFIT_PER_DAY // per-trade interest
-                }
-              }
-            );
-
-            console.log(
-              `💰 Day ${day}: Added ${PROFIT_PER_DAY} profit to user ${updatedUser._id} and trade ${tradeId}`
-            );
-
-            // After 90 days, close the trade
-            if (day === TOTAL_DAYS) {
-              await UsersDatabase.updateOne(
-                { "transactions._id": tradeId },
-                {
-                  $set: {
-                    "transactions.$.status": "COMPLETED",
-                    "transactions.$.exitPrice": BASE_AMOUNT + (PROFIT_PER_DAY * TOTAL_DAYS),
-                    "transactions.$.result": "WON",
-                  },
-                }
-              );
-              console.log(
-                `✅ Trade ${tradeId} completed after ${TOTAL_DAYS} days`
-              );
-            }
-          } catch (err) {
-            console.error("Daily profit error:", err);
-          }
-        }, day * 24 * 60 * 60 * 1000); // Run once per day
-      }
-    }
 
     res.json({ success: true, message: "Trade command updated", command });
   } catch (err) {
@@ -881,6 +871,8 @@ router.put("/trades/:tradeId/command", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
+
 
 router.put("/trades/:tradeId/commandx", async (req, res) => {
   try {
