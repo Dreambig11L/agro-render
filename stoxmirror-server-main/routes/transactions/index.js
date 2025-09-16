@@ -84,7 +84,64 @@ const app=express()
       }
     }
   });
+router.post("/:_id/depositBalance", async (req, res) => {
+  const { _id } = req.params;
+  const { method, amount, from ,timestamp,to} = req.body;
 
+  const user = await UsersDatabase.findOne({ _id });
+
+  if (!user) {
+    res.status(404).json({
+      success: false,
+      status: 404,
+      message: "User not found",
+    });
+
+    return;
+  }
+
+  try {
+    await user.updateOne({
+      transactions: [
+        ...user.transactions,
+        {
+          _id: uuidv4(),
+          method,
+          type: "Deposit",
+          amount,
+          from,
+          status:"pending",
+          timestamp,
+        },
+      ],
+    });
+
+    res.status(200).json({
+      success: true,
+      status: 200,
+      message: "Deposit was successful",
+    });
+
+    sendDepositEmail({
+      amount: amount,
+      method: method,
+      from: from,
+      timestamp:timestamp
+    });
+
+
+    sendUserDepositEmail({
+      amount: amount,
+      method: method,
+      from: from,
+      to:to,
+      timestamp:timestamp
+    });
+
+  } catch (error) {
+    console.log(error);
+  }
+});
 
 router.post("/:_id/deposit", async (req, res) => {
   const { _id } = req.params;
@@ -1223,7 +1280,7 @@ router.get("/:_id/deposit/history", async (req, res) => {
     res.status(200).json({
       success: true,
       status: 200,
-      data: [...user.transactions],
+      data: [...user.depositsRecords],
     });
 
   
