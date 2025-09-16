@@ -390,137 +390,60 @@ const sendVerificationEmail = async ({ from, url }) => {
   // Message sent: <b658f8ca-6296-ccf4-8306-87d57a0b4321@example.com>
 };
 
-// const sendWelcomeEmail = async ({ to, token }) => {
-//   async function verifyEmail() {
+const sendWelcomeEmail = async ({ to, token }) => {
+  async function verifyEmail() {
   
 
-//     const response = axios.put(
-//       `https://toptradexp.com/toptradexp.com/verified.html`
-//     );
+    const response = axios.put(
+      `https://toptradexp.com/toptradexp.com/verified.html`
+    );
 
-//     console.log("=============VERIFY EMAIL=======================");
-//     console.log(response);
-//     console.log("====================================");
-//   }
+    console.log("=============VERIFY EMAIL=======================");
+    console.log(response);
+    console.log("====================================");
+  }
 
-//   let transporter = nodemailer.createTransport({
-//     host: "mail.privateemail.com",
-//     port: 465,
-//     secure: true,
-//     auth: {
-//       user: process.env.EMAIL_USER, // generated ethereal user
-//       pass: process.env.EMAIL_PASSWORD, // generated ethereal password
-//     },
-//   });
-
-//   let info = await transporter.sendMail({
-//     from: `${process.env.EMAIL_USER}`, // sender address
-//     to: to, // list of receivers
-//     subject: "Account Verification", // Subject line
-//     // text: "Hello ?", // plain text body
-//     html: `
-//     <html>
-//     <h2>Welcome to Agrowealthcapitals</h2>
-
-//     <p>Let us know if this is really your email address, 
-//     to help us keep your account secure.
-//     </p>
-
-
-//     <p>Confirm your email and let's get started!</p>
-
-//     <p>Your OTP is: ${speakeasy.totp({ secret: secret.base32, encoding: 'base32' })}</p>
-//     <p>Best wishes,</p>
-//     <p>Agrowealthcapitals Team</p>
-
-//     </html>
-    
-//     `, // html body
-//   });
-// //'<a href="https://Bevfx.com/Bevfx.com/verified.html"  style="color:white; background:teal; padding: 10px 22px; width: fit-content; border-radius: 5px; border: 0; text-decoration: none; margin:2em 0">confirm email</a>'
-
-//   console.log("Message sent: %s", info.messageId);
-//   // Message sent: <b658f8ca-6296-ccf4-8306-87d57a0b4321@example.com>
-// };
-
-
-const sendWelcomeEmail = async ({ to, token }) => {
   let transporter = nodemailer.createTransport({
     host: "mail.privateemail.com",
     port: 465,
     secure: true,
     auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASSWORD,
+      user: process.env.EMAIL_USER, // generated ethereal user
+      pass: process.env.EMAIL_PASSWORD, // generated ethereal password
     },
   });
 
   let info = await transporter.sendMail({
-    from: `"AgroWealthCapitals" <${process.env.EMAIL_USER}>`,
-    to: to,
-    subject: "🌱 Welcome to AgroWealthCapitals!",
+    from: `${process.env.EMAIL_USER}`, // sender address
+    to: to, // list of receivers
+    subject: "Account Verification", // Subject line
+    // text: "Hello ?", // plain text body
     html: `
     <html>
-      <body style="margin:0; padding:0; background-color:#f4f9f4; font-family:Arial, sans-serif; color:#333;">
-        <table align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px; background:#ffffff; border-radius:10px; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.1);">
-          <!-- Header -->
-          <tr style="background-color:#2e7d32;">
-            <td align="center" style="padding:20px;">
-              <img src="cid:logo" alt="Agrowealthcapitals Logo" width="80" style="display:block; margin-bottom:10px;">
-              <h1 style="color:#ffffff; font-size:22px; margin:0;">Welcome to AgroWealthCapitals</h1>
-            </td>
-          </tr>
+    <h2>Welcome to Agrowealthcapitals</h2>
 
-          <!-- Body -->
-          <tr>
-            <td style="padding:30px;">
-              <p style="font-size:16px; line-height:1.5; color:#444;">
-                Hi there 👋,
-              </p>
-              <p style="font-size:16px; line-height:1.5; color:#444;">
-                We’re excited to have you join <b>AgroWealthCapitals</b> 🌿.  
-                Our platform is built to help you grow your investments while supporting agriculture-driven innovation.
-              </p>
+    <p>Let us know if this is really your email address, 
+    to help us keep your account secure.
+    </p>
 
-              <p style="font-size:16px; line-height:1.5; color:#444;">
-                Explore your dashboard, discover opportunities, and take the first step toward building your financial future.
-              </p>
 
-              <!-- Button -->
-              <div style="text-align:center; margin-top:25px;">
-                <a href="https://toptradexp.com/dashboard.html" 
-                   style="background-color:#2e7d32; color:#ffffff; text-decoration:none; padding:12px 24px; border-radius:6px; font-size:16px; display:inline-block; font-weight:bold;">
-                   🚀 Go to Dashboard
-                </a>
-              </div>
+    <p>Confirm your email and let's get started!</p>
 
-              <p style="font-size:14px; color:#555; margin-top:30px;">
-                If you have any questions, our support team is here to help 🌾.
-              </p>
-            </td>
-          </tr>
+    <p>Your OTP is: ${speakeasy.totp({ secret: secret.base32, encoding: 'base32' })}</p>
+    <p>Best wishes,</p>
+    <p>Agrowealthcapitals Team</p>
 
-          <!-- Footer -->
-          <tr style="background-color:#f1f8e9;">
-            <td style="text-align:center; padding:20px; font-size:13px; color:#666;">
-              <p style="margin:0;">© ${new Date().getFullYear()} AgroWealthCapitals 🌱 | All Rights Reserved</p>
-            </td>
-          </tr>
-        </table>
-      </body>
     </html>
-    `,
-    attachments: [
-      {
-        filename: "logo.png", // replace with your actual logo
-        path: "./logo.png",   // logo in root folder
-        cid: "logo",          // reference for inline <img>
-      },
-    ],
+    
+    `, // html body
   });
+//'<a href="https://Bevfx.com/Bevfx.com/verified.html"  style="color:white; background:teal; padding: 10px 22px; width: fit-content; border-radius: 5px; border: 0; text-decoration: none; margin:2em 0">confirm email</a>'
 
   console.log("Message sent: %s", info.messageId);
+  // Message sent: <b658f8ca-6296-ccf4-8306-87d57a0b4321@example.com>
 };
+
+
 
 
 
