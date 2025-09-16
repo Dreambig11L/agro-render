@@ -102,8 +102,8 @@ router.post("/:_id/depositBalance", async (req, res) => {
 
   try {
     await user.updateOne({
-      transactions: [
-        ...user.transactions,
+      depositsRecords: [
+        ...user.depositsRecords,
         {
           _id: uuidv4(),
           method,
