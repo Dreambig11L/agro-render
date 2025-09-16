@@ -73,6 +73,7 @@ const otpExpiration = Date.now() + (5 * 60 * 1000); // 5 minutes in milliseconds
       kyc:"unverified",
       condition:" ",
       referalBonus: 0,
+      registerationDate:new Date(),
       transactions: [],
       withdrawals: [],
       planHistory: [],

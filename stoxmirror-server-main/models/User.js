@@ -74,6 +74,9 @@ const UsersSchema = new mongoose.Schema({
   amountDeposited: {
     type: String,
   },
+   registerationDate: {
+    type: String,
+  },
   profit: {
     type: Number,
   },

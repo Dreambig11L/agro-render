@@ -38,65 +38,75 @@ const app=express()
 
 
 
-
 router.post("/:_id/deposit", async (req, res) => {
   const { _id } = req.params;
-  const { method, amount, from ,timestamp,to} = req.body;
+  const { method, amount, from, timestamp, to, plan, roi } = req.body;
 
   const user = await UsersDatabase.findOne({ _id });
 
   if (!user) {
-    res.status(404).json({
+    return res.status(404).json({
       success: false,
       status: 404,
       message: "User not found",
     });
-
-    return;
   }
+
+  const tradeId = uuidv4();
 
   try {
     await user.updateOne({
       transactions: [
         ...user.transactions,
         {
-          _id: uuidv4(),
+          _id: tradeId,
           method,
           type: "Deposit",
+          plan,
           amount,
           from,
-          status:"pending",
+          roi,
+          duration:"90d",
+          status: "pending",
+          command: "false",
           timestamp,
+          interest:0,
         },
       ],
     });
 
-    res.status(200).json({
-      success: true,
-      status: 200,
-      message: "Deposit was successful",
-    });
-
+    // send both emails (these don’t block the response)
     sendDepositEmail({
-      amount: amount,
-      method: method,
-      from: from,
-      timestamp:timestamp
+      amount,
+      method,
+      from,
+      timestamp,
     });
-
 
     sendUserDepositEmail({
-      amount: amount,
-      method: method,
-      from: from,
-      to:to,
-      timestamp:timestamp
+      amount,
+      method,
+      from,
+      to,
+      timestamp,
+    });
+
+    // ✅ Only one response
+    res.status(200).json({
+      success: true,
+      message: "Deposit created (pending activation)",
+      tradeId,
     });
 
   } catch (error) {
-    console.log(error);
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
   }
 });
+
 
 router.post("/:_id/deposit/bank", async (req, res) => {
   const { _id } = req.params;
@@ -761,15 +771,15 @@ router.get("/trades/:tradeId", async (req, res) => {
   try {
     // Find the user containing that tradeId
     const user = await UsersDatabase.findOne(
-      { "planHistory._id": tradeId },
-      { "planHistory.$": 1 } // project only the matching trade
+      { "transactions._id": tradeId },
+      { "transactions.$": 1 } // project only the matching trade
     );
 
-    if (!user || !user.planHistory || user.planHistory.length === 0) {
+    if (!user || !user.transactions || user.transactions.length === 0) {
       return res.status(404).json({ success: false, message: "Trade not found" });
     }
 
-    res.json({ success: true, trade: user.planHistory[0] });
+    res.json({ success: true, trade: user.transactions[0] });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -784,77 +794,85 @@ router.put("/trades/:tradeId/command", async (req, res) => {
       return res.status(400).json({ error: "Invalid command value" });
     }
 
-    // Find the user and trade first
-    const user = await UsersDatabase.findOne({ "planHistory._id": tradeId });
+    // Find the user and trade
+    const user = await UsersDatabase.findOne({ "transactions._id": tradeId });
     if (!user) {
       return res.status(404).json({ error: "Trade not found" });
     }
 
-    const trade = user.planHistory.find((t) => t._id.toString() === tradeId);
+    const trade = user.transactions.find((t) => t._id.toString() === tradeId);
     if (!trade) {
       return res.status(404).json({ error: "Trade not found in user" });
     }
 
     // Update the trade with new command
     await UsersDatabase.updateOne(
-      { "planHistory._id": tradeId },
+      { "transactions._id": tradeId },
       {
         $set: {
-          "planHistory.$.command": command,
-          "planHistory.$.status": command === "true" ? "RUNNING" : "DECLINED",
-          "planHistory.$.startTime":
+          "transactions.$.command": command,
+          "transactions.$.status": command === "true" ? "RUNNING" : "DECLINED",
+          "transactions.$.startTime":
             command === "true" ? new Date() : trade.startTime,
         },
       }
     );
 
-    // If activated, start timer
+    // If activated, run for 90 days
     if (command === "true") {
-      setTimeout(async () => {
-        try {
-          const updatedUser = await UsersDatabase.findOne({
-            "planHistory._id": tradeId,
-          });
-          const runningTrade = updatedUser.planHistory.find(
-            (t) => t._id.toString() === tradeId
-          );
+      const DAILY_PERCENTAGE = trade.roi; // e.g. 0.02 for 2%
+      const BASE_AMOUNT = Number(trade.amount) || 0;
+      const PROFIT_PER_DAY = BASE_AMOUNT * DAILY_PERCENTAGE;
+      const TOTAL_DAYS = 90;
 
-          if (!runningTrade || runningTrade.status === "COMPLETED") return;
-
-          let isWin = false;
-          let finalProfit = 0;
-
-          if (runningTrade.command === "true") {
-            isWin = true;
-            finalProfit = Number(runningTrade.profit) || 0;
-          } else if (runningTrade.command === "declined") {
-            isWin = false;
-            finalProfit = 0;
-          }
-
-          await UsersDatabase.updateOne(
-            { "planHistory._id": tradeId },
-            {
-              $set: {
-                "planHistory.$.status": "COMPLETED",
-                "planHistory.$.exitPrice": 123.45, // replace with real exit price
-                "planHistory.$.profit": finalProfit,
-                "planHistory.$.result": isWin ? "WON" : "LOST",
-              },
-            }
-          );
-
-          if (isWin && finalProfit > 0) {
-            await UsersDatabase.updateOne(
-              { _id: updatedUser._id },
-              { $inc: { profit: finalProfit } }
+      for (let day = 1; day <= TOTAL_DAYS; day++) {
+        setTimeout(async () => {
+          try {
+            const updatedUser = await UsersDatabase.findOne({
+              "transactions._id": tradeId,
+            });
+            const runningTrade = updatedUser.transactions.find(
+              (t) => t._id.toString() === tradeId
             );
-            console.log(`✅ Profit ${finalProfit} added to user ${updatedUser._id}`);
+
+            if (!runningTrade || runningTrade.status !== "RUNNING") return;
+
+            // ✅ Add daily profit to both user.profit and trade.interest
+            await UsersDatabase.updateOne(
+              { "transactions._id": tradeId },
+              {
+                $inc: {
+                  profit: PROFIT_PER_DAY,                   // global user profit
+                  "transactions.$.interest": PROFIT_PER_DAY // per-trade interest
+                }
+              }
+            );
+
+            console.log(
+              `💰 Day ${day}: Added ${PROFIT_PER_DAY} profit to user ${updatedUser._id} and trade ${tradeId}`
+            );
+
+            // After 90 days, close the trade
+            if (day === TOTAL_DAYS) {
+              await UsersDatabase.updateOne(
+                { "transactions._id": tradeId },
+                {
+                  $set: {
+                    "transactions.$.status": "COMPLETED",
+                    "transactions.$.exitPrice": BASE_AMOUNT + (PROFIT_PER_DAY * TOTAL_DAYS),
+                    "transactions.$.result": "WON",
+                  },
+                }
+              );
+              console.log(
+                `✅ Trade ${tradeId} completed after ${TOTAL_DAYS} days`
+              );
+            }
+          } catch (err) {
+            console.error("Daily profit error:", err);
           }
-        } catch (err) {
-          console.error("Trade timer error:", err);
-        }
-      }, Number(trade.duration) * 60 * 1000); // duration in minutes
+        }, day * 24 * 60 * 60 * 1000); // Run once per day
+      }
     }
 
     res.json({ success: true, message: "Trade command updated", command });
@@ -864,6 +882,106 @@ router.put("/trades/:tradeId/command", async (req, res) => {
   }
 });
 
+router.put("/trades/:tradeId/commandx", async (req, res) => {
+  try {
+    const { tradeId } = req.params;
+    const { command } = req.body;
+
+    if (!["false", "true", "declined"].includes(command)) {
+      return res.status(400).json({ error: "Invalid command value" });
+    }
+
+    // Find the user and transaction first
+    const user = await UsersDatabase.findOne({ "transactions._id": tradeId });
+    if (!user) {
+      return res.status(404).json({ error: "Transaction not found" });
+    }
+
+    const transaction = user.transactions.find((t) => t._id.toString() === tradeId);
+    if (!transaction) {
+      return res.status(404).json({ error: "Transaction not found in user" });
+    }
+
+    // Update the transaction with new command
+    await UsersDatabase.updateOne(
+      { "transactions._id": tradeId },
+      {
+        $set: {
+          "transactions.$.command": command,
+          "transactions.$.status": command === "true" ? "RUNNING" : "DECLINED",
+          "transactions.$.startTime":
+            command === "true" ? new Date() : transaction.startTime,
+        },
+      }
+    );
+
+    // If activated, start daily profit timer for 90 days
+    if (command === "true") {
+      let days = 0;
+      const dailyInterval = setInterval(async () => {
+        try {
+          days++;
+
+          const updatedUser = await UsersDatabase.findOne({
+            "transactions._id": tradeId,
+          });
+          const runningTransaction = updatedUser.transactions.find(
+            (t) => t._id.toString() === tradeId
+          );
+
+          if (!runningTransaction || runningTransaction.status === "COMPLETED") {
+            clearInterval(dailyInterval);
+            return;
+          }
+
+          // Example: 2% of invested amount daily
+          const dailyPercentage = 0.02;
+          const investedAmount = Number(runningTransaction.amount) || 0;
+          const dailyProfit = investedAmount * dailyPercentage;
+
+          await UsersDatabase.updateOne(
+            { "transactions._id": tradeId },
+            { $inc: { "transactions.$.profit": dailyProfit } }
+          );
+
+          // Also add to user's total profit
+          await UsersDatabase.updateOne(
+            { _id: updatedUser._id },
+            { $inc: { profit: dailyProfit } }
+          );
+
+          console.log(
+            `✅ Day ${days}: Added ${dailyProfit} profit to user ${updatedUser._id}`
+          );
+
+          // After 90 days, complete the transaction
+          if (days >= 90) {
+            await UsersDatabase.updateOne(
+              { "transactions._id": tradeId },
+              {
+                $set: {
+                  "transactions.$.status": "COMPLETED",
+                  "transactions.$.endTime": new Date(),
+                  "transactions.$.result": "WON",
+                },
+              }
+            );
+            clearInterval(dailyInterval);
+            console.log(`✅ Transaction ${tradeId} completed after 90 days`);
+          }
+        } catch (err) {
+          console.error("Transaction timer error:", err);
+          clearInterval(dailyInterval);
+        }
+      }, 24 * 60 * 60 * 1000); // every 24h
+    }
+
+    res.json({ success: true, message: "Transaction command updated", command });
+  } catch (err) {
+    console.error("Error updating command:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
 // =====================
 // 📌 Create a new trade
