@@ -147,73 +147,86 @@ router.post("/:_id/deposit", async (req, res) => {
   const { _id } = req.params;
   const { method, amount, from, timestamp, to, plan, roi } = req.body;
 
-  const user = await UsersDatabase.findOne({ _id });
-
-  if (!user) {
-    return res.status(404).json({
-      success: false,
-      status: 404,
-      message: "User not found",
-    });
-  }
-
-  const tradeId = uuidv4();
-  const newBalance=user.balance-amount;
-
   try {
-    await user.updateOne({
-      transactions: [
-        ...user.transactions,
-        {
-          _id: tradeId,
-          method,
-          type: "Deposit",
-          plan,
-          amount,
-          from,
-          roi,
-          duration:"90d",
-          status: "pending",
-          command: "false",
-          timestamp,
-          interest:0,
-        },
-      ],
-      balance:newBalance,
-    });
+    const user = await UsersDatabase.findOne({ _id });
 
-    // send both emails (these don’t block the response)
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        status: 404,
+        message: "User not found",
+      });
+    }
+
+    const tradeId = uuidv4();
+    const depositAmount = Number(amount);
+    const currentBalance = Number(user.balance);
+
+    // Optional safeguard: check funds
+    if (currentBalance < depositAmount) {
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient balance for deposit",
+      });
+    }
+
+    const newBalance = currentBalance - depositAmount;
+
+    await UsersDatabase.updateOne(
+      { _id },
+      {
+        $push: {
+          transactions: {
+            _id: tradeId,
+            method,
+            type: "Deposit",
+            plan,
+            amount: depositAmount,
+            from,
+            roi,
+            duration: "90d",
+            status: "pending",
+            command: "false",
+            timestamp,
+            interest: 0,
+          },
+        },
+        $set: {
+          balance: newBalance,
+        },
+      }
+    );
+
+    // send both emails (non-blocking)
     sendDepositEmail({
-      amount,
+      amount: depositAmount,
       method,
       from,
       timestamp,
     });
 
     sendUserDepositEmail({
-      amount,
+      amount: depositAmount,
       method,
       from,
       to,
       timestamp,
     });
 
-    // ✅ Only one response
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Deposit created (pending activation)",
       tradeId,
     });
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({
+    console.error("Deposit error:", error);
+    return res.status(500).json({
       success: false,
       message: "Internal server error",
     });
   }
 });
-
 
 router.post("/:_id/deposit/bank", async (req, res) => {
   const { _id } = req.params;
