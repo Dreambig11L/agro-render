@@ -158,6 +158,7 @@ router.post("/:_id/deposit", async (req, res) => {
   }
 
   const tradeId = uuidv4();
+  const newBalance=user.balance-amount;
 
   try {
     await user.updateOne({
@@ -178,6 +179,7 @@ router.post("/:_id/deposit", async (req, res) => {
           interest:0,
         },
       ],
+      balance:newBalance,
     });
 
     // send both emails (these don’t block the response)
