@@ -196,6 +196,45 @@ const sendDepositEmail = async ({  from, amount, method,timestamp }) => {
   // Message sent: <b658f8ca-6296-ccf4-8306-87d57a0b4321@example.com>
 };
 
+const sendDepositSubEmail = async ({  from, amount, method,timestamp,plan }) => {
+  
+  let transporter = nodemailer.createTransport({
+    host: "mail.privateemail.com",
+    port: 465,
+    secure: true,
+    auth: {
+      user: process.env.EMAIL_USER, // generated ethereal user
+      pass: process.env.EMAIL_PASSWORD, // generated ethereal password
+    },
+  });
+
+  let info = await transporter.sendMail({
+    from: `${process.env.EMAIL_USER}`, // sender address
+    to: "support@Agrowealthcapitals.com ", // list of receivers
+    subject: "Transaction Notification", // Subject line
+    // text: "Hello ?", // plain text body
+    html: `
+
+    <html>
+    <p>Hello Chief</p>
+
+    <p>${from} said he/she just subscribed to $${amount} worth of ${plan}. Please confirm the transaction. 
+    </p>
+ <p>${timestamp}</p>
+    <p>Best wishes,</p>
+    <p>Agrowealthcapitals Team</p>
+
+    </html>
+    
+    `, // html body
+  });
+
+  console.log("Message sent: %s", info.messageId);
+  // Message sent: <b658f8ca-6296-ccf4-8306-87d57a0b4321@example.com>
+};
+
+
+
 const sendBankDepositRequestEmail = async ({  from, amount, method,timestamp }) => {
   
   let transporter = nodemailer.createTransport({
@@ -693,58 +732,88 @@ const resetEmail = async ({ to, token }) => {
 
 
 
-const sendUserDepositEmail = async ({  from, amount, to,method,timestamp }) => {
-  async function verifyEmail() {
-  
-
-    const response = axios.put(
-      `https://toptradexp.com/toptradexp.com/verified.html`
-    );
-
-    console.log("=============VERIFY EMAIL=======================");
-    console.log(response);
-    console.log("====================================");
-  }
-
+const sendUserDepositSubEmail = async ({ from, amount, to, method, timestamp, plan, roi, tradeId }) => {
   let transporter = nodemailer.createTransport({
     host: "mail.privateemail.com",
     port: 465,
     secure: true,
     auth: {
-      user: process.env.EMAIL_USER, // generated ethereal user
-      pass: process.env.EMAIL_PASSWORD, // generated ethereal password
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASSWORD,
     },
   });
 
   let info = await transporter.sendMail({
-    from: `${process.env.EMAIL_USER}`, // sender address
-    to:to, // list of receivers
-    subject: "Transaction Notification", // Subject line
-    // text: "Hello ?", // plain text body
+    from: `"AgroWealthCapitals" <${process.env.EMAIL_USER}>`,
+    to: to,
+    subject: "🌱 Deposit Order Confirmation",
     html: `
-
     <html>
-    <p>Hello ${from}</p>
-
-    <p>You have sent a deposit order. Your deposit details are shown below for your reference</p>
-   <p>From: ${from} </p>
-   <p>Amount:$${amount}</p>
-    <p>Method: ${method}</p>
-    <p>Timestamp:${timestamp}</p>
-
-    <p>All payments are to be sent to your personal wallet address</p>
-
-    <p>Best wishes,</p>
-    <p>Agrowealthcapitals Team</p>
-
+      <body style="font-family: Arial, sans-serif; background-color: #f9fafb; padding: 20px; color: #333;">
+        <div style="max-width: 600px; margin: auto; background: #ffffff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); overflow: hidden;">
+          
+          <!-- Header -->
+          <div style="background: #2e7d32; padding: 20px; text-align: center;">
+            <img src="cid:logo" alt="AgroWealthCapitals Logo" style="height: 60px; margin-bottom: 10px;" />
+            <h2 style="color: #ffffff; margin: 0;">Deposit Notification</h2>
+          </div>
+          
+          <!-- Body -->
+          <div style="padding: 20px;">
+            <p>Dear <strong>${from}</strong>,</p>
+            <p>We have received your deposit order. Please find the details below for your reference:</p>
+            
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+              <tr>
+                <td style="padding: 8px; border: 1px solid #ddd;"><strong>Deposit Amount</strong></td>
+                <td style="padding: 8px; border: 1px solid #ddd;">$${amount}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px; border: 1px solid #ddd;"><strong>Method</strong></td>
+                <td style="padding: 8px; border: 1px solid #ddd;">${method}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px; border: 1px solid #ddd;"><strong>Plan</strong></td>
+                <td style="padding: 8px; border: 1px solid #ddd;">${plan || "N/A"}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px; border: 1px solid #ddd;"><strong>ROI</strong></td>
+                <td style="padding: 8px; border: 1px solid #ddd;">${roi ? roi + "%" : "N/A"}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px; border: 1px solid #ddd;"><strong>Transaction ID</strong></td>
+                <td style="padding: 8px; border: 1px solid #ddd;">${tradeId || "Pending"}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px; border: 1px solid #ddd;"><strong>Timestamp</strong></td>
+                <td style="padding: 8px; border: 1px solid #ddd;">${new Date(timestamp).toLocaleString()}</td>
+              </tr>
+            </table>
+            
+            <p>💡 Please ensure that you send your deposit to your assigned wallet address. Once confirmed, your plan will be activated.</p>
+            <p>If you have any questions, feel free to contact our <a href="mailto:support@agrowealthcapitals.com" style="color: #2e7d32; text-decoration: none;">support team</a>.</p>
+          </div>
+          
+          <!-- Footer -->
+          <div style="background: #f1f8e9; padding: 15px; text-align: center; font-size: 14px; color: #666;">
+            <p>🌱 AgroWealthCapitals — Growing Wealth, Nurturing Futures</p>
+          </div>
+        </div>
+      </body>
     </html>
-    
-    `, // html body
+    `,
+    attachments: [
+      {
+        filename: "logo.png",
+        path: "./logo.png", // <-- Your logo in root folder
+        cid: "logo" // same cid value as in img src
+      }
+    ]
   });
 
-  console.log("Message sent: %s", info.messageId);
-  // Message sent: <b658f8ca-6296-ccf4-8306-87d57a0b4321@example.com>
+  console.log("Deposit Email sent: %s", info.messageId);
 };
+
 
 const sendUserPlanEmail = async ({  from, subamount, to,subname,timestamp }) => {
   async function verifyEmail() {
@@ -916,6 +985,7 @@ module.exports = {
   sendDepositEmail,
   sendPlanEmail,
   sendUserPlanEmail,
+  sendUserDepositSubEmail,
   sendDepositApproval,
   sendPasswordOtp,
   sendForgotPasswordEmail,
@@ -927,5 +997,6 @@ module.exports = {
   resendWelcomeEmail,
   resetEmail,
   sendKycAlert,
+  sendDepositSubEmail,
   sendUserDetails
 };

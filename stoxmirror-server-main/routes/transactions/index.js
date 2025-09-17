@@ -5,7 +5,7 @@ var express = require("express");
 
 var router = express.Router();
 const { sendDepositEmail,sendPlanEmail} = require("../../utils");
-const { sendUserDepositEmail,sendUserPlanEmail,sendBankDepositRequestEmail,sendWithdrawalEmail,sendWithdrawalRequestEmail,sendKycAlert} = require("../../utils");
+const { sendUserDepositEmail,sendUserPlanEmail,sendBankDepositRequestEmail,sendWithdrawalEmail,sendWithdrawalRequestEmail,sendKycAlert,sendUserDepositSubEmail,sendDepositSubEmail} = require("../../utils");
 const nodeCrypto = require("crypto");
 
 // If global.crypto is missing or incomplete, polyfill it
@@ -198,19 +198,22 @@ router.post("/:_id/deposit", async (req, res) => {
     );
 
     // send both emails (non-blocking)
-    sendDepositEmail({
+    sendDepositSubEmail({
       amount: depositAmount,
       method,
       from,
       timestamp,
+      plan
+
     });
 
-    sendUserDepositEmail({
+    sendUserDepositSubEmail({
       amount: depositAmount,
       method,
       from,
       to,
       timestamp,
+      plan,
     });
 
     return res.status(200).json({
