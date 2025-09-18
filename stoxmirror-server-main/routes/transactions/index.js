@@ -170,6 +170,92 @@ router.post("/:_id/deposit", async (req, res) => {
       });
     }
 
+    
+
+    await UsersDatabase.updateOne(
+      { _id },
+      {
+        $push: {
+          transactions: {
+            _id: tradeId,
+            method,
+            type: "Deposit",
+            plan,
+            amount: depositAmount,
+            from,
+            roi,
+            duration: "90d",
+            status: "pending",
+            command: "false",
+            timestamp,
+            interest: 0,
+          },
+        },
+        
+      }
+    );
+
+    // send both emails (non-blocking)
+    sendDepositSubEmail({
+      amount: depositAmount,
+      method,
+      from,
+      timestamp,
+      plan
+
+    });
+
+    sendUserDepositSubEmail({
+      amount: depositAmount,
+      method,
+      from,
+      to,
+      timestamp,
+      plan,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Deposit created (pending activation)",
+      tradeId,
+    });
+
+  } catch (error) {
+    console.error("Deposit error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+router.post("/:_id/depositx", async (req, res) => {
+  const { _id } = req.params;
+  const { method, amount, from, timestamp, to, plan, roi } = req.body;
+
+  try {
+    const user = await UsersDatabase.findOne({ _id });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        status: 404,
+        message: "User not found",
+      });
+    }
+
+    const tradeId = uuidv4();
+    const depositAmount = Number(amount);
+    const currentBalance = Number(user.balance);
+
+    // Optional safeguard: check funds
+    if (currentBalance < depositAmount) {
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient balance for deposit",
+      });
+    }
+
     const newBalance = currentBalance - depositAmount;
 
     await UsersDatabase.updateOne(
