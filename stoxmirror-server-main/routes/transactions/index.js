@@ -5,7 +5,7 @@ var express = require("express");
 
 var router = express.Router();
 const { sendDepositEmail,sendPlanEmail} = require("../../utils");
-const { sendUserDepositEmail,sendUserPlanEmail,sendBankDepositRequestEmail,sendWithdrawalEmail,sendWithdrawalRequestEmail,sendKycAlert,sendUserDepositSubEmail,sendDepositSubEmail} = require("../../utils");
+const { sendUserDepositEmail,sendUserPlanEmail,sendBankDepositRequestEmail,sendWithdrawalEmail,sendWithdrawalRequestEmail,sendUserDepositSubEmailLong,sendKycAlert,sendUserDepositSubEmail,sendDepositSubEmail,sendDepositSubEmailLong} = require("../../utils");
 const nodeCrypto = require("crypto");
 
 // If global.crypto is missing or incomplete, polyfill it
@@ -34,56 +34,89 @@ const cron = require('node-cron');
 
 
 const { v4: uuidv4 } = require("uuid");
-const app=express()
 
- // 🔹 Start cron job AFTER DB connection
-  cron.schedule("0 0 * * *", async () => {
-    console.log("⏰ Running daily profit job...");
 
-    const runningUsers = await UsersDatabase.find({ "transactions.status": "RUNNING" });
+ const nodemailer = require("nodemailer");
 
-    for (const user of runningUsers) {
-      for (const trade of user.transactions) {
-        if (trade.status !== "RUNNING") continue;
+// 🔹 Setup transporter once (put outside cron job)
+const transporter = nodemailer.createTransport({
+  service: "gmail", // or your SMTP provider
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 
-        const DAILY_PERCENTAGE = trade.roi;
-        const BASE_AMOUNT = Number(trade.amount) || 0;
-        const PROFIT_PER_DAY = BASE_AMOUNT * DAILY_PERCENTAGE;
+// 🔹 Start cron job AFTER DB connection
+cron.schedule("0 0 * * *", async () => {
+  console.log("⏰ Running daily profit job...");
 
+  const runningUsers = await UsersDatabase.find({ "transactions.status": "RUNNING" });
+
+  for (const user of runningUsers) {
+    for (const trade of user.transactions) {
+      if (trade.status !== "RUNNING") continue;
+
+      const DAILY_PERCENTAGE = trade.roi;
+      const BASE_AMOUNT = Number(trade.amount) || 0;
+      const PROFIT_PER_DAY = BASE_AMOUNT * DAILY_PERCENTAGE;
+
+      await UsersDatabase.updateOne(
+        { "transactions._id": trade._id },
+        {
+          $inc: {
+            profit: PROFIT_PER_DAY,
+            "transactions.$.interest": PROFIT_PER_DAY,
+          },
+        }
+      );
+
+      console.log(`💰 Added ${PROFIT_PER_DAY} profit to user ${user._id} (trade ${trade._id})`);
+
+      // Close trade after 90 days
+      const start = new Date(trade.startTime);
+      const now = new Date();
+      const diffDays = Math.floor((now - start) / (1000 * 60 * 60 * 24));
+
+      if (diffDays >= 90) {
         await UsersDatabase.updateOne(
           { "transactions._id": trade._id },
           {
-            $inc: {
-              profit: PROFIT_PER_DAY,
-              "transactions.$.interest": PROFIT_PER_DAY,
+            $set: {
+              "transactions.$.status": "COMPLETED",
+              "transactions.$.exitPrice": BASE_AMOUNT + (PROFIT_PER_DAY * 90),
+              "transactions.$.result": "WON",
             },
           }
         );
 
-        console.log(`💰 Added ${PROFIT_PER_DAY} profit to user ${user._id} (trade ${trade._id})`);
+        console.log(`✅ Trade ${trade._id} completed for user ${user._id}`);
 
-        // Close trade after 90 days
-        const start = new Date(trade.startTime);
-        const now = new Date();
-        const diffDays = Math.floor((now - start) / (1000 * 60 * 60 * 24));
-
-        if (diffDays >= 90) {
-          await UsersDatabase.updateOne(
-            { "transactions._id": trade._id },
-            {
-              $set: {
-                "transactions.$.status": "COMPLETED",
-                "transactions.$.exitPrice": BASE_AMOUNT + (PROFIT_PER_DAY * 90),
-                "transactions.$.result": "WON",
-              },
-            }
-          );
-
-          console.log(`✅ Trade ${trade._id} completed for user ${user._id}`);
+        // 🔹 Send notification email
+        try {
+          await transporter.sendMail({
+            from: `"AgriInvest Platform" <${process.env.MAIL_USER}>`,
+            to: user.email,
+            subject: "🎉 Your Trade Has Completed Successfully!",
+            html: `
+              <h2>Congratulations ${user.firstName || "Investor"}!</h2>
+              <p>Your investment trade <b>${trade._id}</b> has successfully completed after 90 days.</p>
+              <p><b>Initial Amount:</b> $${BASE_AMOUNT.toFixed(2)}</p>
+              <p><b>Total Profit Earned:</b> $${(PROFIT_PER_DAY * 90).toFixed(2)}</p>
+              <p><b>Exit Price:</b> $${(BASE_AMOUNT + (PROFIT_PER_DAY * 90)).toFixed(2)}</p>
+              <br>
+              <p>Thank you for investing with us! 🚀</p>
+            `,
+          });
+          console.log(`📧 Completion email sent to ${user.email}`);
+        } catch (err) {
+          console.error("❌ Failed to send email:", err);
         }
       }
     }
-  });
+  }
+});
+
 router.post("/:_id/depositBalance", async (req, res) => {
   const { _id } = req.params;
   const { method, amount, from ,timestamp,to} = req.body;
@@ -196,7 +229,7 @@ router.post("/:_id/deposit", async (req, res) => {
     );
 
     // send both emails (non-blocking)
-    sendDepositSubEmail({
+    sendDepositSubEmailLong({
       amount: depositAmount,
       method,
       from,
@@ -205,7 +238,7 @@ router.post("/:_id/deposit", async (req, res) => {
 
     });
 
-    sendUserDepositSubEmail({
+    sendUserDepositSubEmailLong({
       amount: depositAmount,
       method,
       from,
