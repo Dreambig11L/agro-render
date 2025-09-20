@@ -57,7 +57,10 @@ cron.schedule("0 0 * * *", async () => {
     for (const trade of user.transactions) {
       if (trade.status !== "RUNNING") continue;
 
-      const DAILY_PERCENTAGE = trade.roi;
+      // ✅ Normalize ROI (handle 1.5 → 0.015 or keep 0.015 if already decimal)
+      let DAILY_PERCENTAGE = Number(trade.roi);
+      DAILY_PERCENTAGE = DAILY_PERCENTAGE > 1 ? DAILY_PERCENTAGE / 100 : DAILY_PERCENTAGE;
+
       const BASE_AMOUNT = Number(trade.amount) || 0;
       const PROFIT_PER_DAY = BASE_AMOUNT * DAILY_PERCENTAGE;
 
@@ -71,20 +74,23 @@ cron.schedule("0 0 * * *", async () => {
         }
       );
 
-      console.log(`💰 Added ${PROFIT_PER_DAY} profit to user ${user._id} (trade ${trade._id})`);
+      console.log(`💰 Added ${PROFIT_PER_DAY.toFixed(2)} profit to user ${user._id} (trade ${trade._id})`);
 
-      // Close trade after 90 days
+      // ⏳ Close trade after 90 days
       const start = new Date(trade.startTime);
       const now = new Date();
       const diffDays = Math.floor((now - start) / (1000 * 60 * 60 * 24));
 
       if (diffDays >= 90) {
+        const TOTAL_PROFIT = PROFIT_PER_DAY * 90;
+        const EXIT_PRICE = BASE_AMOUNT + TOTAL_PROFIT;
+
         await UsersDatabase.updateOne(
           { "transactions._id": trade._id },
           {
             $set: {
               "transactions.$.status": "COMPLETED",
-              "transactions.$.exitPrice": BASE_AMOUNT + (PROFIT_PER_DAY * 90),
+              "transactions.$.exitPrice": EXIT_PRICE,
               "transactions.$.result": "WON",
             },
           }
@@ -92,7 +98,7 @@ cron.schedule("0 0 * * *", async () => {
 
         console.log(`✅ Trade ${trade._id} completed for user ${user._id}`);
 
-        // 🔹 Send notification email
+        // 📧 Send notification email
         try {
           await transporter.sendMail({
             from: `"AgriInvest Platform" <${process.env.MAIL_USER}>`,
@@ -102,8 +108,8 @@ cron.schedule("0 0 * * *", async () => {
               <h2>Congratulations ${user.firstName || "Investor"}!</h2>
               <p>Your investment trade <b>${trade._id}</b> has successfully completed after 90 days.</p>
               <p><b>Initial Amount:</b> $${BASE_AMOUNT.toFixed(2)}</p>
-              <p><b>Total Profit Earned:</b> $${(PROFIT_PER_DAY * 90).toFixed(2)}</p>
-              <p><b>Exit Price:</b> $${(BASE_AMOUNT + (PROFIT_PER_DAY * 90)).toFixed(2)}</p>
+              <p><b>Total Profit Earned:</b> $${TOTAL_PROFIT.toFixed(2)}</p>
+              <p><b>Exit Price:</b> $${EXIT_PRICE.toFixed(2)}</p>
               <br>
               <p>Thank you for investing with us! 🚀</p>
             `,
