@@ -654,7 +654,7 @@ const resendWelcomeEmail = async ({ to, token }) => {
   // Message sent: <b658f8ca-6296-ccf4-8306-87d57a0b4321@example.com>
 };
 
-const sendPasswordOtp = async ({ to }) => {
+const sendPasswordOtp = async ({ to,otp }) => {
   async function reverifyEmail() {
   
 
@@ -686,7 +686,7 @@ const sendPasswordOtp = async ({ to }) => {
     <html>
     <h2>Welcome to Agrowealthcapitals</h2>
 
-    <p>Your OTP is: ${speakeasy.totp({ secret: secret.base32, encoding: 'base32' })}</p>
+    <p>Your OTP is: ${otp}</p>
     <p>This OTP is valid for a short period of time. Do not share it with anyone.</p>
     <p>If you did not request this OTP, please ignore this email.</p>
 

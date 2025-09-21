@@ -275,6 +275,13 @@ router.post("/register/resend", async (req, res) => {
   const { email } = req.body;
   const user = await UsersDatabase.findOne({ email });
 
+  // Generate OTP
+  const otp = speakeasy.totp({
+    secret: process.env.SECRET_KEY,
+    encoding: "base32",
+  });
+  const otpExpiration = Date.now() + 5 * 60 * 1000; // 5 minutes
+
   if (!user) {
     res.status(404).json({
       success: false,
@@ -286,14 +293,16 @@ router.post("/register/resend", async (req, res) => {
   }
 
   try {
-    
+     
     res.status(200).json({
       success: true,
-      status: 200,
+       data: createdUser,
+      otp,
+      otpExpiration,
       message: "OTP resent successfully",
     });
     
- sendPasswordOtp({to:req.body.email})
+ sendPasswordOtp({to:req.body.email,otp})
    
     // sendUserDetails({
     //   to:req.body.email
