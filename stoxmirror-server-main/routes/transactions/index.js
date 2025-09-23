@@ -101,7 +101,7 @@ cron.schedule("0 0 * * *", async () => {
         // 📧 Send notification email
         try {
           await transporter.sendMail({
-            from: `"AgriInvest Platform" <${process.env.MAIL_USER}>`,
+            from: `"AgriInvest Platform" <${process.env.EMAIL_USER}>`,
             to: user.email,
             subject: "🎉 Your Trade Has Completed Successfully!",
             html: `
@@ -544,220 +544,220 @@ router.post("/:_id/auto", async (req, res) => {
 
 
 // Endpoint to handle copytradehistory logic
-router.post("/:_id/Tdeposit", async (req, res) => {
-  const { _id } = req.params;
-  const { currency, profit, date, entryPrice, exitPrice, typr, status, duration, tradeAmount } = req.body;
+// router.post("/:_id/Tdeposit", async (req, res) => {
+//   const { _id } = req.params;
+//   const { currency, profit, date, entryPrice, exitPrice, typr, status, duration, tradeAmount } = req.body;
 
-  const user = await UsersDatabase.findOne({ _id});
+//   const user = await UsersDatabase.findOne({ _id});
 
 
-  if (!user) {
-    return res.status(404).json({
-      success: false,
-      status: 404,
-      message: "User not found",
-    });
-  }
+//   if (!user) {
+//     return res.status(404).json({
+//       success: false,
+//       status: 404,
+//       message: "User not found",
+//     });
+//   }
 
-  try {
-    const tradeId = uuidv4();
-    const startTime = new Date();
-    const userProfit = Number(user.profit || 0);
-    const profitToAdd = Number(profit);
-const newBalance = user.balance - tradeAmount;
-    // Create initial trade record
-    await user.updateOne({
-      planHistory: [
-        ...user.planHistory,
-        {
-          _id: tradeId,
-          currency,
-          entryPrice,
-          typr,
-          status: 'PENDING',
-          exitPrice,
-          profit: profitToAdd,
-          date,
-          duration,
-          startTime
-        },
-      ],
-      balance:newBalance,
-    });
+//   try {
+//     const tradeId = uuidv4();
+//     const startTime = new Date();
+//     const userProfit = Number(user.profit || 0);
+//     const profitToAdd = Number(profit);
+// const newBalance = user.balance - tradeAmount;
+//     // Create initial trade record
+//     await user.updateOne({
+//       planHistory: [
+//         ...user.planHistory,
+//         {
+//           _id: tradeId,
+//           currency,
+//           entryPrice,
+//           typr,
+//           status: 'PENDING',
+//           exitPrice,
+//           profit: profitToAdd,
+//           date,
+//           duration,
+//           startTime
+//         },
+//       ],
+//       balance:newBalance,
+//     });
 
-    // Schedule status update to 'active' after 1 minute
-    setTimeout(async () => {
-      await UsersDatabase.updateOne(
-        { _id, "planHistory._id": tradeId },
-        { $set: { "planHistory.$.status": "ACTIVE" } }
-      );
-    }, 60000);
+//     // Schedule status update to 'active' after 1 minute
+//     setTimeout(async () => {
+//       await UsersDatabase.updateOne(
+//         { _id, "planHistory._id": tradeId },
+//         { $set: { "planHistory.$.status": "ACTIVE" } }
+//       );
+//     }, 60000);
 
-    // Schedule completion after duration
-    cron.schedule('* * * * *', async () => {
-      try {
-        const currentUser = await UsersDatabase.findOne({ _id });
-        const trade = currentUser.planHistory.find(t => t._id === tradeId);
+//     // Schedule completion after duration
+//     cron.schedule('* * * * *', async () => {
+//       try {
+//         const currentUser = await UsersDatabase.findOne({ _id });
+//         const trade = currentUser.planHistory.find(t => t._id === tradeId);
         
-        if (!trade || trade.status !== 'ACTIVE') return;
+//         if (!trade || trade.status !== 'ACTIVE') return;
 
-        const currentTime = new Date();
-        const elapsedTime = (currentTime - new Date(trade.startTime)) / (1000 * 60);
+//         const currentTime = new Date();
+//         const elapsedTime = (currentTime - new Date(trade.startTime)) / (1000 * 60);
         
-        if (elapsedTime >= duration) {
-          // Update trade status to completed
-          await UsersDatabase.updateOne(
-            { _id, "planHistory._id": tradeId },
-            { 
-              $set: {
-                "planHistory.$.status": "COMPLETED"
-              }
-            }
-          );
+//         if (elapsedTime >= duration) {
+//           // Update trade status to completed
+//           await UsersDatabase.updateOne(
+//             { _id, "planHistory._id": tradeId },
+//             { 
+//               $set: {
+//                 "planHistory.$.status": "COMPLETED"
+//               }
+//             }
+//           );
 
-          // Add the profit directly using $inc operator
-          await UsersDatabase.updateOne(
-            { _id },
-            { $set: { profit: userProfit + profitToAdd } }
-          );
+//           // Add the profit directly using $inc operator
+//           await UsersDatabase.updateOne(
+//             { _id },
+//             { $set: { profit: userProfit + profitToAdd } }
+//           );
 
-          // Update related deposit status
-          await UsersDatabase.updateOne(
-            { 
-              _id, 
-              "transactions.currency": currency,
-              "transactions.status": "pending"
-            },
-            { 
-              $set: { "transactions.$.status": "completed" }
-            }
-          );
-        }
-      } catch (error) {
-        console.error('Cron job error:', error);
-      }
-    });
+//           // Update related deposit status
+//           await UsersDatabase.updateOne(
+//             { 
+//               _id, 
+//               "transactions.currency": currency,
+//               "transactions.status": "pending"
+//             },
+//             { 
+//               $set: { "transactions.$.status": "completed" }
+//             }
+//           );
+//         }
+//       } catch (error) {
+//         console.error('Cron job error:', error);
+//       }
+//     });
 
-    res.status(200).json({
-      success: true,
-      status: 200,
-      message: "Trade initiated successfully",
-    });
+//     res.status(200).json({
+//       success: true,
+//       status: 200,
+//       message: "Trade initiated successfully",
+//     });
 
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({
-      success: false,
-      status: 500,
-      message: "Internal server error",
-    });
-  }
-});
+//   } catch (error) {
+//     console.log(error);
+//     res.status(500).json({
+//       success: false,
+//       status: 500,
+//       message: "Internal server error",
+//     });
+//   }
+// });
 
-router.post("/:_id/Tdeposit", async (req, res) => {
-  const { _id } = req.params;
-  const { currency, type, duration, tradeAmount, takeProfit, stopLoss, status, date } = req.body;
+// router.post("/:_id/Tdeposit", async (req, res) => {
+//   const { _id } = req.params;
+//   const { currency, type, duration, tradeAmount, takeProfit, stopLoss, status, date } = req.body;
 
-  const user = await UsersDatabase.findOne({ _id });
+//   const user = await UsersDatabase.findOne({ _id });
 
-  if (!user) {
-    return res.status(404).json({
-      success: false,
-      status: 404,
-      message: "User not found",
-    });
-  }
+//   if (!user) {
+//     return res.status(404).json({
+//       success: false,
+//       status: 404,
+//       message: "User not found",
+//     });
+//   }
 
-  try {
-    const tradeId = uuidv4();
-    const startTime = new Date();
-    const userProfit = Number(user.profit || 0);
+//   try {
+//     const tradeId = uuidv4();
+//     const startTime = new Date();
+//     const userProfit = Number(user.profit || 0);
 
-    // Deduct trade amount from balance
-    const newBalance = user.balance - tradeAmount;
+//     // Deduct trade amount from balance
+//     const newBalance = user.balance - tradeAmount;
 
-    // Create initial trade record
-    await user.updateOne({
-      planHistory: [
-        ...user.planHistory,
-        {
-          _id: tradeId,
-          currency,
-          type,                  // ✅ corrected from "typr"
-          status: status || "PENDING",
-          duration,
-          tradeAmount,
-          takeProfit: takeProfit || null,
-          stopLoss: stopLoss || null,
-          profit: null,          // ✅ will be set later
-          entryPrice: null,      // ✅ placeholder
-          exitPrice: null,       // ✅ placeholder
-          date,
-          startTime,
-        },
-      ],
-      balance: newBalance,
-    });
+//     // Create initial trade record
+//     await user.updateOne({
+//       planHistory: [
+//         ...user.planHistory,
+//         {
+//           _id: tradeId,
+//           currency,
+//           type,                  // ✅ corrected from "typr"
+//           status: status || "PENDING",
+//           duration,
+//           tradeAmount,
+//           takeProfit: takeProfit || null,
+//           stopLoss: stopLoss || null,
+//           profit: null,          // ✅ will be set later
+//           entryPrice: null,      // ✅ placeholder
+//           exitPrice: null,       // ✅ placeholder
+//           date,
+//           startTime,
+//         },
+//       ],
+//       balance: newBalance,
+//     });
 
-    // Schedule status update to "ACTIVE" after 1 minute
-    setTimeout(async () => {
-      await UsersDatabase.updateOne(
-        { _id, "planHistory._id": tradeId },
-        { $set: { "planHistory.$.status": "ACTIVE" } }
-      );
-    }, 60000);
+//     // Schedule status update to "ACTIVE" after 1 minute
+//     setTimeout(async () => {
+//       await UsersDatabase.updateOne(
+//         { _id, "planHistory._id": tradeId },
+//         { $set: { "planHistory.$.status": "ACTIVE" } }
+//       );
+//     }, 60000);
 
-    // Cron job to check if duration expired
-    cron.schedule("* * * * *", async () => {
-      try {
-        const currentUser = await UsersDatabase.findOne({ _id });
-        const trade = currentUser.planHistory.find((t) => t._id === tradeId);
+//     // Cron job to check if duration expired
+//     cron.schedule("* * * * *", async () => {
+//       try {
+//         const currentUser = await UsersDatabase.findOne({ _id });
+//         const trade = currentUser.planHistory.find((t) => t._id === tradeId);
 
-        if (!trade || trade.status !== "ACTIVE") return;
+//         if (!trade || trade.status !== "ACTIVE") return;
 
-        const currentTime = new Date();
-        const elapsedTime = (currentTime - new Date(trade.startTime)) / (1000 * 60);
+//         const currentTime = new Date();
+//         const elapsedTime = (currentTime - new Date(trade.startTime)) / (1000 * 60);
 
-        if (elapsedTime >= duration) {
-          const profitToAdd = trade.tradeAmount * 0.1; // example profit calc (10%)
+//         if (elapsedTime >= duration) {
+//           const profitToAdd = trade.tradeAmount * 0.1; // example profit calc (10%)
 
-          // Update trade to completed
-          await UsersDatabase.updateOne(
-            { _id, "planHistory._id": tradeId },
-            {
-              $set: {
-                "planHistory.$.status": "COMPLETED",
-                "planHistory.$.exitPrice": 123.45, // placeholder
-                "planHistory.$.profit": profitToAdd,
-              },
-            }
-          );
+//           // Update trade to completed
+//           await UsersDatabase.updateOne(
+//             { _id, "planHistory._id": tradeId },
+//             {
+//               $set: {
+//                 "planHistory.$.status": "COMPLETED",
+//                 "planHistory.$.exitPrice": 123.45, // placeholder
+//                 "planHistory.$.profit": profitToAdd,
+//               },
+//             }
+//           );
 
-          // Add profit to user
-          await UsersDatabase.updateOne(
-            { _id },
-            { $set: { profit: userProfit + profitToAdd, balance: user.balance + profitToAdd } }
-          );
-        }
-      } catch (error) {
-        console.error("Cron job error:", error);
-      }
-    });
+//           // Add profit to user
+//           await UsersDatabase.updateOne(
+//             { _id },
+//             { $set: { profit: userProfit + profitToAdd, balance: user.balance + profitToAdd } }
+//           );
+//         }
+//       } catch (error) {
+//         console.error("Cron job error:", error);
+//       }
+//     });
 
-    res.status(200).json({
-      success: true,
-      status: 200,
-      message: "Trade initiated successfully",
-    });
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({
-      success: false,
-      status: 500,
-      message: "Internal server error",
-    });
-  }
-});
+//     res.status(200).json({
+//       success: true,
+//       status: 200,
+//       message: "Trade initiated successfully",
+//     });
+//   } catch (error) {
+//     console.log(error);
+//     res.status(500).json({
+//       success: false,
+//       status: 500,
+//       message: "Internal server error",
+//     });
+//   }
+// });
 
 // DELETE trade by tradeId for a specific user
 router.delete("/:userId/:tradeId/trades", async (req, res) => {
