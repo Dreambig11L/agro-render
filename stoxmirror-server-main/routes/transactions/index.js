@@ -1,6 +1,6 @@
-const UsersDatabase = require("../../models/User");
 var express = require("express");
 // const { v4: uuidv4 } = require("uuid");
+const UsersDatabase = require("../../models/User");
 
 
 var router = express.Router();
@@ -131,7 +131,7 @@ const transporter = nodemailer.createTransport({
 //     res.status(500).json({ success: false, error: err.message });
 //   }
 // });
-export async function runDailyProfitJob() {
+ async function runDailyProfitJob() {
   console.log("⏰ Running daily profit job...");
 
   try {
