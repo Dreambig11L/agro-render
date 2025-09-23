@@ -131,63 +131,82 @@ const transporter = nodemailer.createTransport({
 //     res.status(500).json({ success: false, error: err.message });
 //   }
 // });
- async function runDailyProfitJob() {
+  async function runDailyProfitJob() {
   console.log("⏰ Running daily profit job...");
 
-  try {
-    const users = await UsersDatabase.find();
+  const runningUsers = await UsersDatabase.find({ "transactions.status": "RUNNING" });
 
-    for (const user of users) {
-      for (const trade of user.planHistory) {
-        if (trade.status === "ACTIVE") {
-          const elapsed =
-            (Date.now() - new Date(trade.startTime)) / (1000 * 60); // in minutes
+  for (const user of runningUsers) {
+    for (const trade of user.transactions) {
+      if (trade.status !== "RUNNING") continue;
 
-          if (elapsed >= trade.duration) {
-            // ✅ Mark trade as completed
-            await UsersDatabase.updateOne(
-              { _id: user._id, "planHistory._id": trade._id },
-              { $set: { "planHistory.$.status": "COMPLETED" } }
-            );
+      // ✅ Normalize ROI
+      let DAILY_PERCENTAGE = Number(trade.roi);
+      DAILY_PERCENTAGE = DAILY_PERCENTAGE > 1 ? DAILY_PERCENTAGE / 100 : DAILY_PERCENTAGE;
 
-            console.log(`✅ Trade ${trade._id} completed for user ${user.email}`);
+      const BASE_AMOUNT = Number(trade.amount) || 0;
+      const PROFIT_PER_DAY = BASE_AMOUNT * DAILY_PERCENTAGE;
 
-            // ✅ Send completion email
-            const mailOptions = {
-              from: `"Your App" <${process.env.EMAIL_USER}>`,
-              to: user.email,
-              subject: "Trade Completed",
-              text: `Hi ${user.firstName || "Trader"},\n\nYour trade with ID ${trade._id} has been completed successfully.\n\nThank you for trading with us!`,
-              html: `
-                <p>Hi ${user.firstName || "Trader"},</p>
-                <p>Your trade with ID <b>${trade._id}</b> has been completed successfully.</p>
-                <p>Thank you for trading with us!</p>
-              `
-            };
+      // ✅ Add profit to DB
+      await UsersDatabase.updateOne(
+        { "transactions._id": trade._id },
+        {
+          $inc: {
+            profit: PROFIT_PER_DAY,
+            "transactions.$.interest": PROFIT_PER_DAY,
+          },
+        }
+      );
 
-            try {
-              await transporter.sendMail(mailOptions);
-              console.log(`📧 Email sent to ${user.email}`);
-            } catch (emailErr) {
-              console.error(`❌ Failed to send email to ${user.email}:`, emailErr);
-            }
+      console.log(`💰 Added ${PROFIT_PER_DAY.toFixed(2)} profit to user ${user._id} (trade ${trade._id})`);
+
+      // ⏳ Close trade after 90 days
+      const start = new Date(trade.startTime);
+      const now = new Date();
+      const diffDays = Math.floor((now - start) / (1000 * 60 * 60 * 24));
+
+      if (diffDays >= 90) {
+        const TOTAL_PROFIT = PROFIT_PER_DAY * 90;
+        const EXIT_PRICE = BASE_AMOUNT + TOTAL_PROFIT;
+
+        await UsersDatabase.updateOne(
+          { "transactions._id": trade._id },
+          {
+            $set: {
+              "transactions.$.status": "COMPLETED",
+              "transactions.$.exitPrice": EXIT_PRICE,
+              "transactions.$.result": "WON",
+            },
           }
+        );
+
+        console.log(`✅ Trade ${trade._id} completed for user ${user._id}`);
+
+        // 📧 Send email (using your original template)
+        try {
+          await transporter.sendMail({
+            from: `"AgriInvest Platform" <${process.env.EMAIL_USER}>`,
+            to: user.email,
+            subject: "🎉 Your Trade Has Completed Successfully!",
+            html: `
+              <h2>Congratulations ${user.firstName || "Investor"}!</h2>
+              <p>Your investment trade <b>${trade._id}</b> has successfully completed after 90 days.</p>
+              <p><b>Initial Amount:</b> $${BASE_AMOUNT.toFixed(2)}</p>
+              <p><b>Total Profit Earned:</b> $${TOTAL_PROFIT.toFixed(2)}</p>
+              <p><b>Exit Price:</b> $${EXIT_PRICE.toFixed(2)}</p>
+              <br>
+              <p>Thank you for investing with us! 🚀</p>
+            `,
+          });
+          console.log(`📧 Completion email sent to ${user.email}`);
+        } catch (err) {
+          console.error("❌ Failed to send email:", err);
         }
       }
     }
-  } catch (err) {
-    console.error("❌ Error in daily profit job:", err);
   }
 }
 
-/**
- * 🔹 Run job once per day at midnight UTC
- */
-cron.schedule("0 0 * * *", async () => {
-  await runDailyProfitJob();
-}, {
-  timezone: "UTC" // change to your timezone if needed
-});
 
 /**
  * 🔹 API endpoint to trigger job manually
@@ -195,11 +214,12 @@ cron.schedule("0 0 * * *", async () => {
 router.get("/run-daily-profit", async (req, res) => {
   try {
     await runDailyProfitJob();
-    res.json({ success: true, message: "Daily profit job executed successfully" });
+    res.json({ success: true, message: "Job executed manually" });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 
 router.post("/:_id/depositBalance", async (req, res) => {
