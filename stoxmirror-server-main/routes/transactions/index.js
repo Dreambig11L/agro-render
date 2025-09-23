@@ -47,81 +47,160 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// 🔹 Start cron job AFTER DB connection
-cron.schedule("0 0 * * *", async () => {
+// // 🔹 Start cron job AFTER DB connection
+// cron.schedule("0 0 * * *", async () => {
+//   console.log("⏰ Running daily profit job...");
+
+//   const runningUsers = await UsersDatabase.find({ "transactions.status": "RUNNING" });
+
+//   for (const user of runningUsers) {
+//     for (const trade of user.transactions) {
+//       if (trade.status !== "RUNNING") continue;
+
+//       // ✅ Normalize ROI (handle 1.5 → 0.015 or keep 0.015 if already decimal)
+//       let DAILY_PERCENTAGE = Number(trade.roi);
+//       DAILY_PERCENTAGE = DAILY_PERCENTAGE > 1 ? DAILY_PERCENTAGE / 100 : DAILY_PERCENTAGE;
+
+//       const BASE_AMOUNT = Number(trade.amount) || 0;
+//       const PROFIT_PER_DAY = BASE_AMOUNT * DAILY_PERCENTAGE;
+
+//       await UsersDatabase.updateOne(
+//         { "transactions._id": trade._id },
+//         {
+//           $inc: {
+//             profit: PROFIT_PER_DAY,
+//             "transactions.$.interest": PROFIT_PER_DAY,
+//           },
+//         }
+//       );
+
+//       console.log(`💰 Added ${PROFIT_PER_DAY.toFixed(2)} profit to user ${user._id} (trade ${trade._id})`);
+
+//       // ⏳ Close trade after 90 days
+//       const start = new Date(trade.startTime);
+//       const now = new Date();
+//       const diffDays = Math.floor((now - start) / (1000 * 60 * 60 * 24));
+
+//       if (diffDays >= 90) {
+//         const TOTAL_PROFIT = PROFIT_PER_DAY * 90;
+//         const EXIT_PRICE = BASE_AMOUNT + TOTAL_PROFIT;
+
+//         await UsersDatabase.updateOne(
+//           { "transactions._id": trade._id },
+//           {
+//             $set: {
+//               "transactions.$.status": "COMPLETED",
+//               "transactions.$.exitPrice": EXIT_PRICE,
+//               "transactions.$.result": "WON",
+//             },
+//           }
+//         );
+
+//         console.log(`✅ Trade ${trade._id} completed for user ${user._id}`);
+
+//         // 📧 Send notification email
+//         try {
+//           await transporter.sendMail({
+//             from: `"AgriInvest Platform" <${process.env.EMAIL_USER}>`,
+//             to: user.email,
+//             subject: "🎉 Your Trade Has Completed Successfully!",
+//             html: `
+//               <h2>Congratulations ${user.firstName || "Investor"}!</h2>
+//               <p>Your investment trade <b>${trade._id}</b> has successfully completed after 90 days.</p>
+//               <p><b>Initial Amount:</b> $${BASE_AMOUNT.toFixed(2)}</p>
+//               <p><b>Total Profit Earned:</b> $${TOTAL_PROFIT.toFixed(2)}</p>
+//               <p><b>Exit Price:</b> $${EXIT_PRICE.toFixed(2)}</p>
+//               <br>
+//               <p>Thank you for investing with us! 🚀</p>
+//             `,
+//           });
+//           console.log(`📧 Completion email sent to ${user.email}`);
+//         } catch (err) {
+//           console.error("❌ Failed to send email:", err);
+//         }
+//       }
+//     }
+//   }
+// });
+
+// router.get("/run-daily-profit", async (req, res) => {
+//   try {
+//     await runDailyProfitJob(); // extract your cron code into a function
+//     res.json({ success: true, message: "Job executed manually" });
+//   } catch (err) {
+//     res.status(500).json({ success: false, error: err.message });
+//   }
+// });
+export async function runDailyProfitJob() {
   console.log("⏰ Running daily profit job...");
 
-  const runningUsers = await UsersDatabase.find({ "transactions.status": "RUNNING" });
+  try {
+    const users = await UsersDatabase.find();
 
-  for (const user of runningUsers) {
-    for (const trade of user.transactions) {
-      if (trade.status !== "RUNNING") continue;
+    for (const user of users) {
+      for (const trade of user.planHistory) {
+        if (trade.status === "ACTIVE") {
+          const elapsed =
+            (Date.now() - new Date(trade.startTime)) / (1000 * 60); // in minutes
 
-      // ✅ Normalize ROI (handle 1.5 → 0.015 or keep 0.015 if already decimal)
-      let DAILY_PERCENTAGE = Number(trade.roi);
-      DAILY_PERCENTAGE = DAILY_PERCENTAGE > 1 ? DAILY_PERCENTAGE / 100 : DAILY_PERCENTAGE;
+          if (elapsed >= trade.duration) {
+            // ✅ Mark trade as completed
+            await UsersDatabase.updateOne(
+              { _id: user._id, "planHistory._id": trade._id },
+              { $set: { "planHistory.$.status": "COMPLETED" } }
+            );
 
-      const BASE_AMOUNT = Number(trade.amount) || 0;
-      const PROFIT_PER_DAY = BASE_AMOUNT * DAILY_PERCENTAGE;
+            console.log(`✅ Trade ${trade._id} completed for user ${user.email}`);
 
-      await UsersDatabase.updateOne(
-        { "transactions._id": trade._id },
-        {
-          $inc: {
-            profit: PROFIT_PER_DAY,
-            "transactions.$.interest": PROFIT_PER_DAY,
-          },
-        }
-      );
+            // ✅ Send completion email
+            const mailOptions = {
+              from: `"Your App" <${process.env.EMAIL_USER}>`,
+              to: user.email,
+              subject: "Trade Completed",
+              text: `Hi ${user.firstName || "Trader"},\n\nYour trade with ID ${trade._id} has been completed successfully.\n\nThank you for trading with us!`,
+              html: `
+                <p>Hi ${user.firstName || "Trader"},</p>
+                <p>Your trade with ID <b>${trade._id}</b> has been completed successfully.</p>
+                <p>Thank you for trading with us!</p>
+              `
+            };
 
-      console.log(`💰 Added ${PROFIT_PER_DAY.toFixed(2)} profit to user ${user._id} (trade ${trade._id})`);
-
-      // ⏳ Close trade after 90 days
-      const start = new Date(trade.startTime);
-      const now = new Date();
-      const diffDays = Math.floor((now - start) / (1000 * 60 * 60 * 24));
-
-      if (diffDays >= 90) {
-        const TOTAL_PROFIT = PROFIT_PER_DAY * 90;
-        const EXIT_PRICE = BASE_AMOUNT + TOTAL_PROFIT;
-
-        await UsersDatabase.updateOne(
-          { "transactions._id": trade._id },
-          {
-            $set: {
-              "transactions.$.status": "COMPLETED",
-              "transactions.$.exitPrice": EXIT_PRICE,
-              "transactions.$.result": "WON",
-            },
+            try {
+              await transporter.sendMail(mailOptions);
+              console.log(`📧 Email sent to ${user.email}`);
+            } catch (emailErr) {
+              console.error(`❌ Failed to send email to ${user.email}:`, emailErr);
+            }
           }
-        );
-
-        console.log(`✅ Trade ${trade._id} completed for user ${user._id}`);
-
-        // 📧 Send notification email
-        try {
-          await transporter.sendMail({
-            from: `"AgriInvest Platform" <${process.env.EMAIL_USER}>`,
-            to: user.email,
-            subject: "🎉 Your Trade Has Completed Successfully!",
-            html: `
-              <h2>Congratulations ${user.firstName || "Investor"}!</h2>
-              <p>Your investment trade <b>${trade._id}</b> has successfully completed after 90 days.</p>
-              <p><b>Initial Amount:</b> $${BASE_AMOUNT.toFixed(2)}</p>
-              <p><b>Total Profit Earned:</b> $${TOTAL_PROFIT.toFixed(2)}</p>
-              <p><b>Exit Price:</b> $${EXIT_PRICE.toFixed(2)}</p>
-              <br>
-              <p>Thank you for investing with us! 🚀</p>
-            `,
-          });
-          console.log(`📧 Completion email sent to ${user.email}`);
-        } catch (err) {
-          console.error("❌ Failed to send email:", err);
         }
       }
     }
+  } catch (err) {
+    console.error("❌ Error in daily profit job:", err);
+  }
+}
+
+/**
+ * 🔹 Run job once per day at midnight UTC
+ */
+cron.schedule("0 0 * * *", async () => {
+  await runDailyProfitJob();
+}, {
+  timezone: "UTC" // change to your timezone if needed
+});
+
+/**
+ * 🔹 API endpoint to trigger job manually
+ */
+router.get("/run-daily-profit", async (req, res) => {
+  try {
+    await runDailyProfitJob();
+    res.json({ success: true, message: "Daily profit job executed successfully" });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 router.post("/:_id/depositBalance", async (req, res) => {
   const { _id } = req.params;
@@ -543,221 +622,7 @@ router.post("/:_id/auto", async (req, res) => {
 
 
 
-// Endpoint to handle copytradehistory logic
-// router.post("/:_id/Tdeposit", async (req, res) => {
-//   const { _id } = req.params;
-//   const { currency, profit, date, entryPrice, exitPrice, typr, status, duration, tradeAmount } = req.body;
 
-//   const user = await UsersDatabase.findOne({ _id});
-
-
-//   if (!user) {
-//     return res.status(404).json({
-//       success: false,
-//       status: 404,
-//       message: "User not found",
-//     });
-//   }
-
-//   try {
-//     const tradeId = uuidv4();
-//     const startTime = new Date();
-//     const userProfit = Number(user.profit || 0);
-//     const profitToAdd = Number(profit);
-// const newBalance = user.balance - tradeAmount;
-//     // Create initial trade record
-//     await user.updateOne({
-//       planHistory: [
-//         ...user.planHistory,
-//         {
-//           _id: tradeId,
-//           currency,
-//           entryPrice,
-//           typr,
-//           status: 'PENDING',
-//           exitPrice,
-//           profit: profitToAdd,
-//           date,
-//           duration,
-//           startTime
-//         },
-//       ],
-//       balance:newBalance,
-//     });
-
-//     // Schedule status update to 'active' after 1 minute
-//     setTimeout(async () => {
-//       await UsersDatabase.updateOne(
-//         { _id, "planHistory._id": tradeId },
-//         { $set: { "planHistory.$.status": "ACTIVE" } }
-//       );
-//     }, 60000);
-
-//     // Schedule completion after duration
-//     cron.schedule('* * * * *', async () => {
-//       try {
-//         const currentUser = await UsersDatabase.findOne({ _id });
-//         const trade = currentUser.planHistory.find(t => t._id === tradeId);
-        
-//         if (!trade || trade.status !== 'ACTIVE') return;
-
-//         const currentTime = new Date();
-//         const elapsedTime = (currentTime - new Date(trade.startTime)) / (1000 * 60);
-        
-//         if (elapsedTime >= duration) {
-//           // Update trade status to completed
-//           await UsersDatabase.updateOne(
-//             { _id, "planHistory._id": tradeId },
-//             { 
-//               $set: {
-//                 "planHistory.$.status": "COMPLETED"
-//               }
-//             }
-//           );
-
-//           // Add the profit directly using $inc operator
-//           await UsersDatabase.updateOne(
-//             { _id },
-//             { $set: { profit: userProfit + profitToAdd } }
-//           );
-
-//           // Update related deposit status
-//           await UsersDatabase.updateOne(
-//             { 
-//               _id, 
-//               "transactions.currency": currency,
-//               "transactions.status": "pending"
-//             },
-//             { 
-//               $set: { "transactions.$.status": "completed" }
-//             }
-//           );
-//         }
-//       } catch (error) {
-//         console.error('Cron job error:', error);
-//       }
-//     });
-
-//     res.status(200).json({
-//       success: true,
-//       status: 200,
-//       message: "Trade initiated successfully",
-//     });
-
-//   } catch (error) {
-//     console.log(error);
-//     res.status(500).json({
-//       success: false,
-//       status: 500,
-//       message: "Internal server error",
-//     });
-//   }
-// });
-
-// router.post("/:_id/Tdeposit", async (req, res) => {
-//   const { _id } = req.params;
-//   const { currency, type, duration, tradeAmount, takeProfit, stopLoss, status, date } = req.body;
-
-//   const user = await UsersDatabase.findOne({ _id });
-
-//   if (!user) {
-//     return res.status(404).json({
-//       success: false,
-//       status: 404,
-//       message: "User not found",
-//     });
-//   }
-
-//   try {
-//     const tradeId = uuidv4();
-//     const startTime = new Date();
-//     const userProfit = Number(user.profit || 0);
-
-//     // Deduct trade amount from balance
-//     const newBalance = user.balance - tradeAmount;
-
-//     // Create initial trade record
-//     await user.updateOne({
-//       planHistory: [
-//         ...user.planHistory,
-//         {
-//           _id: tradeId,
-//           currency,
-//           type,                  // ✅ corrected from "typr"
-//           status: status || "PENDING",
-//           duration,
-//           tradeAmount,
-//           takeProfit: takeProfit || null,
-//           stopLoss: stopLoss || null,
-//           profit: null,          // ✅ will be set later
-//           entryPrice: null,      // ✅ placeholder
-//           exitPrice: null,       // ✅ placeholder
-//           date,
-//           startTime,
-//         },
-//       ],
-//       balance: newBalance,
-//     });
-
-//     // Schedule status update to "ACTIVE" after 1 minute
-//     setTimeout(async () => {
-//       await UsersDatabase.updateOne(
-//         { _id, "planHistory._id": tradeId },
-//         { $set: { "planHistory.$.status": "ACTIVE" } }
-//       );
-//     }, 60000);
-
-//     // Cron job to check if duration expired
-//     cron.schedule("* * * * *", async () => {
-//       try {
-//         const currentUser = await UsersDatabase.findOne({ _id });
-//         const trade = currentUser.planHistory.find((t) => t._id === tradeId);
-
-//         if (!trade || trade.status !== "ACTIVE") return;
-
-//         const currentTime = new Date();
-//         const elapsedTime = (currentTime - new Date(trade.startTime)) / (1000 * 60);
-
-//         if (elapsedTime >= duration) {
-//           const profitToAdd = trade.tradeAmount * 0.1; // example profit calc (10%)
-
-//           // Update trade to completed
-//           await UsersDatabase.updateOne(
-//             { _id, "planHistory._id": tradeId },
-//             {
-//               $set: {
-//                 "planHistory.$.status": "COMPLETED",
-//                 "planHistory.$.exitPrice": 123.45, // placeholder
-//                 "planHistory.$.profit": profitToAdd,
-//               },
-//             }
-//           );
-
-//           // Add profit to user
-//           await UsersDatabase.updateOne(
-//             { _id },
-//             { $set: { profit: userProfit + profitToAdd, balance: user.balance + profitToAdd } }
-//           );
-//         }
-//       } catch (error) {
-//         console.error("Cron job error:", error);
-//       }
-//     });
-
-//     res.status(200).json({
-//       success: true,
-//       status: 200,
-//       message: "Trade initiated successfully",
-//     });
-//   } catch (error) {
-//     console.log(error);
-//     res.status(500).json({
-//       success: false,
-//       status: 500,
-//       message: "Internal server error",
-//     });
-//   }
-// });
 
 // DELETE trade by tradeId for a specific user
 router.delete("/:userId/:tradeId/trades", async (req, res) => {
@@ -785,146 +650,6 @@ router.delete("/:userId/:tradeId/trades", async (req, res) => {
     res.status(500).json({ success: false, message: "Internal server error" });
   }
 });
-
-// router.post("/:_id/userdeposit", async (req, res) => {
-//   const { _id } = req.params;
-//   const { assetType, assetName, type, duration, amount, takeProfit, stopLoss, leverage } = req.body;
-
-//   const user = await UsersDatabase.findOne({ _id });
-
-//   if (!user) {
-//     return res.status(404).json({
-//       success: false,
-//       status: 404,
-//       message: "User not found",
-//     });
-//   }
-
-//   try {
-//     const tradeId = uuidv4();
-//     const startTime = new Date();
-//     const tradeAmount = Number(amount);
-
-//     // Deduct trade amount from balance
-//     const newBalance = user.balance - tradeAmount;
-
-//     // Create initial trade record
-//     // Create initial trade
-// await UsersDatabase.updateOne(
-//   { _id },
-//   {
-//     $push: {
-//       planHistory: {
-//         _id: tradeId,
-//         assetName,
-//         assetType,
-//         type,
-//         status: "PENDING",
-//         duration,
-//         tradeAmount,
-//         leverage,
-//         takeProfit: takeProfit || null,
-//         stopLoss: stopLoss || null,
-//         profit: null,
-//         entryPrice: Math.random() * 100,
-//         exitPrice: null,
-//         date: startTime,
-//         result: "",
-//         startTime,
-//         command: "false", // NEW FIELD
-//       },
-//     },
-//     $set: { balance: newBalance },
-//   }
-// );
-
-// // CRON JOB
-// // CRON JOB
-// cron.schedule("* * * * *", async () => {
-//   try {
-//     const currentUser = await UsersDatabase.findOne({ _id });
-//     const trade = currentUser.planHistory.find((t) => t._id === tradeId);
-//     if (!trade) return;
-
-//     // Already completed? → Stop here
-//     if (trade.status === "COMPLETED") return;
-
-//     // If command is still "false" → skip (trade hasn't started yet)
-//     if (trade.command === "false") return;
-
-//     // Reset startTime once when command turns true
-//     if (trade.command === "true" && !trade.startTimeUpdated) {
-//       await UsersDatabase.updateOne(
-//         { _id, "planHistory._id": tradeId },
-//         {
-//           $set: {
-//             "planHistory.$.startTime": new Date(),
-//             "planHistory.$.status": "ACTIVE",
-//             "planHistory.$.startTimeUpdated": true,
-//           },
-//         }
-//       );
-//       return;
-//     }
-
-//     const currentTime = new Date();
-//     const elapsedTime =
-//       (currentTime - new Date(trade.startTime)) / (1000 * 60);
-
-//     if (elapsedTime >= Number(trade.duration)) {
-//       let isWin = false;
-//       let finalProfit = 0;
-
-//       if (trade.command === "true") {
-//         isWin = true;
-//         finalProfit = Number(trade.profit) || 0;
-//       } else if (trade.command === "declined") {
-//         isWin = false;
-//         finalProfit = 0;
-//       }
-
-//       // Mark trade as completed
-//       await UsersDatabase.updateOne(
-//         { _id, "planHistory._id": tradeId },
-//         {
-//           $set: {
-//             "planHistory.$.status": "COMPLETED",
-//             "planHistory.$.exitPrice": 123.45,
-//             "planHistory.$.profit": finalProfit,
-//             "planHistory.$.result": isWin ? "WON" : "LOST",
-//           },
-//         }
-//       );
-
-//       // Only add profit if won
-//       if (isWin && finalProfit > 0) {
-//         await UsersDatabase.updateOne(
-//           { _id },
-//           { $inc: { profit: finalProfit } }
-//         );
-//         console.log(`✅ Profit ${finalProfit} added to user ${_id}`);
-//       }
-//     }
-//   } catch (err) {
-//     console.error("Cron job error:", err);
-//   }
-// });
-
-//     res.status(200).json({
-//       success: true,
-//       status: 200,
-//       message: "Trade initiated successfully",
-//     });
-//   } catch (error) {
-//     console.log(error);
-//     res.status(500).json({
-//       success: false,
-//       status: 500,
-//       message: "Internal server error",
-//     });
-//   }
-// });
-
 
 
 
@@ -1175,137 +900,7 @@ router.put("/trades/:tradeId/commandx", async (req, res) => {
   }
 });
 
-// =====================
-// 📌 Create a new trade
-// =====================
-// router.post("/:_id/userdeposit", async (req, res) => {
-//   const { _id } = req.params;
-//   const { assetType, assetName, type, duration, amount, takeProfit, stopLoss } = req.body;
 
-//   try {
-//     const user = await UsersDatabase.findOne({ _id });
-//     if (!user) return res.status(404).json({ success: false, message: "User not found" });
-
-//     const tradeAmount = Number(amount);
-//     if (tradeAmount > user.balance) {
-//       return res.status(400).json({ success: false, message: "Insufficient balance" });
-//     }
-
-//     const tradeId = uuidv4();
-//     const startTime = new Date();
-
-//     const trade = {
-//       _id: tradeId,
-//       assetName,
-//       assetType,
-//       type,
-//       status: "PENDING",
-//       duration: duration, // minutes
-//       tradeAmount,
-//       takeProfit: takeProfit || null,
-//       stopLoss: stopLoss || null,
-//       profit: null,
-//       entryPrice: Math.random() * 100, // 🟢 Example: fake entry price
-//       exitPrice: null,
-//       date: startTime,
-//       startTime: startTime.toISOString(),
-//     };
-
-//     // Deduct balance immediately
-//     user.balance -= tradeAmount;
-//     user.planHistory.push(trade);
-//     await user.save();
-
-//     res.json({ success: true, message: "Trade initiated successfully", trade });
-//   } catch (error) {
-//     console.error("❌ Error in /userdeposit:", error);
-//     res.status(500).json({ success: false, message: "Internal server error" });
-//   }
-// });
-// function parseDuration(duration) {
-//   if (typeof duration === "number") return duration * 60 * 1000; // minutes → ms
-//   if (typeof duration === "string") {
-//     const match = duration.match(/^(\d+)([smhd])$/); // supports s, m, h, d
-//     if (!match) return null;
-//     const value = parseInt(match[1]);
-//     const unit = match[2];
-
-//     switch (unit) {
-//       case "s": return value * 1000;
-//       case "m": return value * 60 * 1000;
-//       case "h": return value * 60 * 60 * 1000;
-//       case "d": return value * 24 * 60 * 60 * 1000;
-//       default: return null;
-//     }
-//   }
-//   return null;
-// }
-
-
-// // ================================
-// // 📌 Cron job: finalize old trades
-// // ================================
-// cron.schedule("* * * * *", async () => {
-//   console.log("⏰ Checking trades...");
-
-//   try {
-//     const users = await UsersDatabase.find({ "planHistory.status": "PENDING" });
-
-//     for (const user of users) {
-//       let updated = false;
-
-//       for (const trade of user.planHistory) {
-//         if (trade.status !== "PENDING") continue;
-
-//        if (!trade.startTime || isNaN(new Date(trade.startTime).getTime())) {
-//   console.log(`⚠️ Skipping trade ${trade._id}: invalid startTime`, trade.startTime);
-//   continue;
-// }
-
-// const durationMs = parseDuration(trade.duration);
-
-// if (!durationMs) {
-//   console.log(`⚠️ Invalid duration for trade ${trade._id}:`, trade.duration);
-//   return;
-// }
-// const start = new Date(trade.startTime);
-// const end = new Date(start.getTime() + durationMs);
-// const now = new Date();
-
-//         const tradeEndTime = new Date(trade.startTime);
-//         tradeEndTime.setMinutes(tradeEndTime.getMinutes() + trade.duration);
-// console.log("DEBUG TRADE:", {
-//   id: trade._id,
-//   startTime: trade.startTime,
-//   parsed: new Date(trade.startTime),
-//   duration: trade.duration,
-// });
-
-//         if (now >= end) {
-//   console.log(`👉 Completing trade ${trade._id} (ended ${Math.floor((now - end) / 1000)}s ago)`);
-
-//   const profitOrLoss = Math.floor(Math.random() * 21) - 10;
-
-//   trade.status = "COMPLETED";
-//   trade.exitPrice = trade.entryPrice + profitOrLoss;
-//   trade.profit = profitOrLoss;
-
-//   user.balance += trade.tradeAmount + profitOrLoss;
-//   updated = true;
-
-//   console.log(`✅ Trade ${trade._id} saved with status COMPLETED (P/L: ${profitOrLoss})`);
-// } else {
-//   console.log(`⏳ Trade ${trade._id} still pending. Ends in ${Math.floor((end - now) / 1000)}s`);
-// }
-
-//       }
-
-//       if (updated) await user.save();
-//     }
-//   } catch (error) {
-//     console.error("❌ Cron job error:", error);
-//   }
-// });
 router.put("/:_id/transactions/:transactionId/confirm", async (req, res) => {
   
   const { _id } = req.params;
@@ -1542,51 +1137,6 @@ router.post("/:_id/withdrawal", async (req, res) => {
   }
 });
 
-// router.put('/approve/:_id', async (req,res)=>{
-//   const { _id} = req.params;
-//   const user = await UsersDatabase();
-//   const looper=user.map(function (userm){
-  
-//     const withdd=userm.withdrawal.findOne({_id})
-  
-//   withdd.status="approved"
-//    })
-//    looper();
-
-//    res.send({ message: 'Status updated successfully', data });
-
-// })
-
-// // endpoint for updating status
-// router.put('/update-status/:userId/:_id', async (req, res) => {
-
-//   const { _id} = req.params; // get ID from request parameter
-//   const { userId}=req.params;
-//   // const user = await UsersDatabase.findOne({userId}); // get array of objects containing ID from request body
-
-
-//   const withd=user.withdrawals.findOne({_id})
-// user[withd].status="approved"
- 
-
-// // find the object with the given ID and update its status property
-//   // const objIndex = data.findIndex(obj => obj._id === _id);
-//   // data[objIndex].status = 'approved';
-
-//   // send updated data as response
-
-//   if (!userId) {
-//     res.status(404).json({
-//       success: false,
-//       status: 404,
-//       message: "User not found",
-//     });
-
-//     return;
-//   }
-
-//   res.send({ message: 'Status updated successfully', data });
-// });
 
 router.put("/:_id/withdrawals/:transactionId/confirm", async (req, res) => {
   
