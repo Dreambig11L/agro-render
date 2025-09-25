@@ -40,7 +40,7 @@ const { v4: uuidv4 } = require("uuid");
 
 // 🔹 Setup transporter once (put outside cron job)
 const transporter = nodemailer.createTransport({
-  service: "gmail", // or your SMTP provider
+  service: "mail.privateemail.com", // or your SMTP provider
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
