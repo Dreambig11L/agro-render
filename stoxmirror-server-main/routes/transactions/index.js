@@ -1159,52 +1159,98 @@ router.post("/:_id/withdrawal", async (req, res) => {
 
 
 router.put("/:_id/withdrawals/:transactionId/confirm", async (req, res) => {
-  
-  const { _id } = req.params;
-  const { transactionId } = req.params;
-
-  const user = await UsersDatabase.findOne({ _id });
-
-  if (!user) {
-    res.status(404).json({
-      success: false,
-      status: 404,
-      message: "User not found",
-    });
-
-    return;
-  }
+  const { _id, transactionId } = req.params;
 
   try {
-    const withdrawalsArray = user.withdrawals;
-    const withdrawalTx = withdrawalsArray.filter(
-      (tx) => tx._id === transactionId
-    );
+    // 🔹 Find user
+    const user = await UsersDatabase.findById(_id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        status: 404,
+        message: "User not found",
+      });
+    }
 
-    withdrawalTx[0].status = "Approved";
-    // console.log(withdrawalTx);
+    // 🔹 Try to get subdocument via Mongoose helper first
+    let withdrawalTx = null;
+    // If withdrawals is a Mongoose DocumentArray, .id(transactionId) works
+    if (typeof user.withdrawals.id === "function") {
+      withdrawalTx = user.withdrawals.id(transactionId);
+    }
 
-    // const cummulativeWithdrawalTx = Object.assign({}, ...user.withdrawals, withdrawalTx[0])
-    // console.log("cummulativeWithdrawalTx", cummulativeWithdrawalTx);
+    // Fallback: find by comparing stringified _id (covers ObjectId vs string)
+    if (!withdrawalTx) {
+      withdrawalTx = user.withdrawals.find(
+        (tx) => (tx._id ? tx._id.toString() : tx.id) === transactionId
+      );
+    }
 
-    await user.updateOne({
-      withdrawals: [
-        ...user.withdrawals
-        //cummulativeWithdrawalTx
-      ],
-    });
+    if (!withdrawalTx) {
+      return res.status(404).json({
+        success: false,
+        status: 404,
+        message: "Withdrawal transaction not found",
+      });
+    }
 
+    // 🔹 Prevent double approval
+    if (withdrawalTx.status === "Approved") {
+      return res.status(400).json({
+        success: false,
+        message: "Withdrawal already approved",
+      });
+    }
+
+    // 🔹 Update transaction status & record approver time
+    withdrawalTx.status = "Approved";
+    withdrawalTx.approvedAt = new Date();
+
+    // If for any reason Mongoose didn't detect the change, mark the path
+    // This ensures changes to nested arrays are noticed on save.
+    user.markModified && user.markModified("withdrawals");
+
+    // 🔹 Subtract amount from user profit safely
+    const amount = Number(withdrawalTx.amount) || 0;
+    user.profit = Math.max((user.profit || 0) - amount, 0); // prevent negative profit
+
+    // 🔹 Save changes (important: await this)
+    await user.save();
+
+    // Prepare response payload (fresh subdoc)
+    const savedTx = (typeof user.withdrawals.id === "function")
+      ? user.withdrawals.id(transactionId)
+      : user.withdrawals.find((tx) => (tx._id ? tx._id.toString() : tx.id) === transactionId);
+
+    // ✅ Respond success (we saved before responding)
     res.status(200).json({
-      message: "Transaction approved",
+      success: true,
+      message: "Withdrawal approved and profit updated",
+      transaction: savedTx,
+      updatedProfit: user.profit,
     });
 
-    return;
+    // 🔹 Send withdrawal approval email (fire-and-forget)
+    // sendWithdrawalApproval({
+    //   from: `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email,
+    //   amount: withdrawalTx.amount,
+    //   method: withdrawalTx.method,
+    //   timestamp: new Date().toLocaleString(),
+    //   to: user.email,
+    // }).catch((emailErr) => {
+    //   console.error("❌ Failed to send withdrawal approval email:", emailErr);
+    // });
+
   } catch (error) {
-    res.status(302).json({
-      message: "Opps! an error occured",
+    console.error("Error approving withdrawal:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An error occurred while approving withdrawal",
+      error: error.message,
     });
   }
 });
+
 
 
 
